@@ -1,7 +1,7 @@
 @echo off
 rem ===========================================================================
-rem  Рендерит картинки виджета для README в docs\ (прозрачный фон, x2).
-rem  Требует собранных исходников в этой же папке. Запускать при запущенном плеере.
+rem  Renders the widget gallery for README into docs\ (transparent background, x2).
+rem  Album art is synthetic, so no music player is required. 10 style variants.
 rem ===========================================================================
 setlocal
 set "FW=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319"
@@ -18,10 +18,9 @@ Shots.exe
 if errorlevel 1 exit /b 1
 
 if not exist docs mkdir docs
-move /y shot-widget.png docs\widget-dark.png >nul
-move /y shot-blur.png   docs\widget-blur.png >nul
-move /y shot-tint.png   docs\widget-tint.png >nul
-move /y shot-color.png  docs\widget-color.png >nul
+for %%f in (01-dark 02-left-no-border 03-blur 04-blur-tint 05-cover-color 06-light 07-glass 08-blur-shadow 09-compact 10-gradient-border) do (
+  if exist %%f.png move /y %%f.png "docs\%%f.png" >nul
+)
 del /q Shots.exe 2>nul
 echo.
 echo Done -^> docs\

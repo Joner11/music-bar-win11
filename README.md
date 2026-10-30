@@ -7,28 +7,16 @@ Music Bar Win11 — маленькая плашка на панели задач
 Окно не мешает работе: оно не забирает фокус, не появляется в Alt+Tab и не перекрывает кнопки панели задач.
 Оформление настраивается полностью — от цветов и шрифтов до фона, построенного из обложки альбома.
 
-<img src="docs/widget-dark.png" alt="Music Bar Win11 — виджет на панели задач" width="720">
-
-### Фон из обложки
-
-<table>
-<tr>
-<td><img src="docs/widget-blur.png" alt="Размытая обложка" width="360"></td>
-<td><img src="docs/widget-tint.png" alt="Размытая обложка с оттенком" width="360"></td>
-</tr>
-<tr>
-<td align="center"><sub>размытая обложка</sub></td>
-<td align="center"><sub>размытая обложка + оттенок</sub></td>
-</tr>
-<tr>
-<td><img src="docs/widget-color.png" alt="Цвет из обложки" width="360"></td>
-<td></td>
-</tr>
-<tr>
-<td align="center"><sub>цвет из обложки</sub></td>
-<td></td>
-</tr>
-</table>
+<img src="docs/01-dark.png" alt="Music Bar Win11" width="720">
+<img src="docs/02-left-no-border.png" alt="Music Bar Win11" width="720">
+<img src="docs/03-blur.png" alt="Music Bar Win11" width="720">
+<img src="docs/04-blur-tint.png" alt="Music Bar Win11" width="720">
+<img src="docs/05-cover-color.png" alt="Music Bar Win11" width="720">
+<img src="docs/06-light.png" alt="Music Bar Win11" width="720">
+<img src="docs/07-glass.png" alt="Music Bar Win11" width="720">
+<img src="docs/08-blur-shadow.png" alt="Music Bar Win11" width="720">
+<img src="docs/09-compact.png" alt="Music Bar Win11" width="720">
+<img src="docs/10-gradient-border.png" alt="Music Bar Win11" width="720">
 
 ## Что внутри
 
@@ -117,7 +105,7 @@ make_installer.cmd
 | `build.cmd` | сборка одним вызовом `csc.exe` |
 | `installer.iss` | скрипт Inno Setup |
 | `make_installer.cmd` | сборка установщика одной командой |
-| `Shots.cs`, `make_shots.cmd` | рендер картинок виджета для README в `docs\` |
+| `Shots.cs`, `make_shots.cmd` | рендер галереи стилей для README в `docs\` (обложки синтетические) |
 
 ## Как это устроено
 
