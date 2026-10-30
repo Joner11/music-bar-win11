@@ -130,7 +130,12 @@ namespace NowPlaying
                 if (size > avail) size = avail;
                 if (size < 4) size = 4;
                 if (size > bounds.Width - pad * 2) size = Math.Max(4, bounds.Width - pad * 2);
-                int ty = bounds.Y + (bounds.Height - size) / 2;
+                int ty;
+                int availH = bounds.Height - pad * 2;
+                if (cfg.ThumbVAlign == "top") ty = bounds.Y + pad;
+                else if (cfg.ThumbVAlign == "bottom") ty = bounds.Y + pad + Math.Max(0, availH - size);
+                else ty = bounds.Y + (bounds.Height - size) / 2;
+                ty += (int)Math.Round(cfg.ThumbOffset * scale);
                 int tx = cfg.ThumbSide == "right" ? bounds.Right - pad - size : bounds.X + pad;
                 var tr2 = new Rectangle(tx, ty, size, size);
                 if (thumb != null)
@@ -165,6 +170,32 @@ namespace NowPlaying
 
             Color titleCol = Config.ParseColor(cfg.TitleColor, Color.White);
             Color secondCol = Config.ParseColor(cfg.ArtistColor, Color.FromArgb(168, 168, 172));
+            bool darkText = false;
+            if (cfg.TextColorMode == "auto")
+            {
+                darkText = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
+            }
+            else if (cfg.TextColorMode == "light")
+            {
+                darkText = false;
+            }
+            else if (cfg.TextColorMode == "dark")
+            {
+                darkText = true;
+            }
+            if (cfg.TextColorMode != "custom")
+            {
+                if (darkText)
+                {
+                    titleCol = Color.FromArgb(16, 16, 20);
+                    secondCol = Color.FromArgb(92, 92, 102);
+                }
+                else
+                {
+                    titleCol = Color.White;
+                    secondCol = Color.FromArgb(216, 216, 220);
+                }
+            }
             if (t != null && !t.IsPlaying && cfg.DimPaused)
             {
                 titleCol = Color.FromArgb(190, titleCol.R, titleCol.G, titleCol.B);
@@ -252,8 +283,12 @@ namespace NowPlaying
                 var pc = Config.ParseColor(cfg.ProgressColor, Color.White);
                 int pa = cfg.ProgressAlpha;
                 if (t != null && !t.IsPlaying && cfg.DimPaused) pa = pa * 6 / 10;
-                using (var br = new SolidBrush(Color.FromArgb(60, 255, 255, 255)))
+                bool lightBg = (cfg.TextColorMode == "dark") ||
+                    (cfg.TextColorMode == "auto" && Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f);
+                using (var br = new SolidBrush(lightBg ? Color.FromArgb(40, 0, 0, 0)
+                                                       : Color.FromArgb(60, 255, 255, 255)))
                     g.FillRectangle(br, trackRect);
+                if (lightBg) pc = Color.FromArgb(40, 40, 46);
                 using (var br = new SolidBrush(Color.FromArgb(pa, pc.R, pc.G, pc.B)))
                     g.FillRectangle(br, fillRect);
             }
@@ -339,6 +374,55 @@ namespace NowPlaying
             {
                 return new Font("Segoe UI", size, style);
             }
+        }
+
+        /// <summary>Приблизительный цвет подложки под текстом — для авто-контраста.</summary>
+        public static Color EffectiveBackground(Config cfg, Image thumb, Rectangle bounds)
+        {
+            Color bg;
+            bool fromCover = thumb != null && cfg.BgMode != "color";
+            if (fromCover && cfg.BgMode == "cover_color")
+            {
+                bg = Adjust(AverageColor(thumb), cfg.CoverSaturation, cfg.CoverDark);
+            }
+            else if (fromCover)
+            {
+                Color mc = Adjust(AverageColor(thumb), cfg.CoverSaturation, cfg.CoverDark);
+                // поверх размытия лежит затемнение + тинт
+                float t = Math.Max(0f, Math.Min(1f, cfg.CoverDark / 100f));
+                Color tint = Color.FromArgb(cfg.BgR, cfg.BgG, cfg.BgB);
+                bg = MixColors(mc, Color.Black, t);
+                if (cfg.BgMode == "cover_blur_tint" && cfg.Gradient)
+                    bg = MixColors(bg, tint, 0.45f);
+            }
+            else if (cfg.Gradient)
+            {
+                bg = MixColors(Color.FromArgb(cfg.BgR, cfg.BgG, cfg.BgB),
+                               Color.FromArgb(cfg.BgR2, cfg.BgG2, cfg.BgB2), 0.5f);
+            }
+            else
+            {
+                bg = Color.FromArgb(cfg.BgR, cfg.BgG, cfg.BgB);
+            }
+
+            if (!cfg.BgEnabled || cfg.OpacityPercent <= 0) bg = Color.FromArgb(30, 30, 34);
+            else if (cfg.OpacityPercent < 100)
+                bg = MixColors(Color.FromArgb(30, 30, 34), bg, cfg.OpacityPercent / 100f);
+            return bg;
+        }
+
+        public static float Luminance(Color c)
+        {
+            return (c.R * 0.299f + c.G * 0.587f + c.B * 0.114f) / 255f;
+        }
+
+        public static Color MixColors(Color a, Color b, float t)
+        {
+            if (t < 0) t = 0; if (t > 1) t = 1;
+            return Color.FromArgb(
+                Clamp255((int)(a.R + (b.R - a.R) * t)),
+                Clamp255((int)(a.G + (b.G - a.G) * t)),
+                Clamp255((int)(a.B + (b.B - a.B) * t)));
         }
 
         /// <summary>Средний цвет изображения (по уменьшенной копии).</summary>

@@ -14,55 +14,64 @@ namespace NowPlaying
         public TrackInfo Track;
         public Image Thumb;
         public float ScrollPx;
+        const int TbH = 44;
 
         public PreviewBox()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(15, 15, 18);
+            BackColor = Theme.Bg;
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(BackColor);
-
-            int tbH = 48;
-            Rectangle bar = new Rectangle(0, Height - tbH, Width, tbH);
-            using (var br = new SolidBrush(Color.FromArgb(30, 30, 35)))
-                g.FillRectangle(br, bar);
-            using (var pen = new Pen(Theme.Sep))
-                g.DrawLine(pen, 0, bar.Top, Width, bar.Top);
-
-            // «кнопки» панели задач для контекста
-            int bx = Width - 10;
-            for (int i = 0; i < 3; i++)
-            {
-                Draw.FillRound(g, new Rectangle(bx - 30, bar.Top + 12, 24, 24), 6,
-                    Color.FromArgb(44, 44, 52));
-                bx -= 32;
-            }
+            g.Clear(Theme.Bg);
 
             if (Cfg == null) return;
 
-            float avail = Width - 40;
+            Rectangle card = new Rectangle(0, 0, Width - 1, Height - 1);
+            Draw.FillRound(g, card, 10, Color.FromArgb(15, 15, 19));
+            Draw.StrokeRound(g, card, 10, Theme.Sep);
+
+            int padX = 18;
+            int tbY = Height - TbH - 10;
+            Rectangle bar = new Rectangle(padX, tbY, Width - padX * 2, TbH);
+            Draw.FillRound(g, bar, 8, Color.FromArgb(32, 32, 38));
+
+            // правый край панели: часы и значки
+            using (var f = Theme.F(7.5f, false))
+            {
+                Draw.Text(g, "22:41", f, Color.FromArgb(200, 200, 208),
+                    new Rectangle(bar.Right - 58, bar.Top, 44, TbH), StringAlignment.Far, StringAlignment.Center);
+                Draw.Text(g, "РУС", f, Color.FromArgb(150, 150, 160),
+                    new Rectangle(bar.Right - 108, bar.Top, 40, TbH), StringAlignment.Far, StringAlignment.Center);
+            }
+            for (int i = 0; i < 3; i++)
+                Draw.FillRound(g, new Rectangle(bar.Right - 172 + i * 20, bar.Top + 15, 14, 14), 3,
+                    Color.FromArgb(52, 52, 60));
+
+            float avail = bar.Width - 200;
             float scale = Math.Min(1.0f, avail / Math.Max(1, Cfg.Width));
-            int w = (int)Math.Round(Cfg.Width * scale);
-            int h = (int)Math.Round(Cfg.Height * scale);
+            int w = Math.Max(1, (int)Math.Round(Cfg.Width * scale));
+            int h = Math.Max(1, (int)Math.Round(Cfg.Height * scale));
 
             using (var bmp = Renderer.Render(Cfg, Track, Thumb, ScrollPx, scale))
             {
-                int x = (Width - w) / 2;
-                int y = bar.Top + (tbH - h) / 2;
+                int x = bar.X + (bar.Width - 176 - w) / 2;
+                if (x < bar.X + 10) x = bar.X + 10;
+                int y = bar.Top + (TbH - h) / 2;
                 g.DrawImageUnscaled(bmp, x, y);
             }
 
-            using (var f = Theme.F(7.5f, false))
-                Draw.Text(g, "панель задач · масштаб " + (int)Math.Round(scale * 100) + "%",
-                    f, Color.FromArgb(105, 105, 115),
-                    new Rectangle(10, bar.Top - 18, Width - 20, 16),
-                    StringAlignment.Near, StringAlignment.Center);
+            using (var f = Theme.F(8f, false))
+                Draw.Text(g, "Предпросмотр", f, Color.FromArgb(110, 110, 120),
+                    new Rectangle(card.X + 18, 8, 200, 16), StringAlignment.Near, StringAlignment.Center);
+            if (scale < 0.999f)
+                using (var f = Theme.F(8f, false))
+                    Draw.Text(g, (int)Math.Round(scale * 100) + "%", f, Color.FromArgb(90, 90, 100),
+                        new Rectangle(card.Right - 80, 8, 62, 16), StringAlignment.Far, StringAlignment.Center);
         }
     }
 
@@ -211,7 +220,7 @@ namespace NowPlaying
             // ---- предпросмотр ----
             Panel top = new Panel();
             top.Dock = DockStyle.Top;
-            top.Height = 150;
+            top.Height = 132;
             top.BackColor = Theme.Bg;
             Controls.Add(top);
 
@@ -221,7 +230,7 @@ namespace NowPlaying
             preview.Track = Track;
             preview.Thumb = Thumb;
             preview.Margin = new Padding(0);
-            top.Padding = new Padding(20, 10, 26, 6);
+            top.Padding = new Padding(20, 6, 26, 4);
             top.Controls.Add(preview);
 
             // ---- содержимое ----
@@ -422,10 +431,20 @@ namespace NowPlaying
             AddToggle(c1, "Исполнитель жирным", delegate { return Cfg.ArtistBold; },
                 delegate(bool v) { Cfg.ArtistBold = v; });
 
-            AddColor(c2, "Цвет названия", delegate { return Cfg.TitleColor; },
-                delegate(string v) { Cfg.TitleColor = v; });
-            AddColor(c2, "Цвет исполнителя", delegate { return Cfg.ArtistColor; },
-                delegate(string v) { Cfg.ArtistColor = v; });
+            AddCombo(c2, "Цвет текста",
+                new string[] { "Авто по фону", "Всегда светлый", "Всегда тёмный", "Свой цвет" },
+                new string[] { "auto", "light", "dark", "custom" },
+                delegate { return Cfg.TextColorMode; },
+                delegate(string v) { Cfg.TextColorMode = v; RebuildPage(); });
+            if (Cfg.TextColorMode == "custom")
+            {
+                AddColor(c2, "Цвет названия", delegate { return Cfg.TitleColor; },
+                    delegate(string v) { Cfg.TitleColor = v; });
+                AddColor(c2, "Цвет исполнителя", delegate { return Cfg.ArtistColor; },
+                    delegate(string v) { Cfg.ArtistColor = v; });
+            }
+            else
+                AddHint(c2, "Оттенок подбирается сам: на тёмном фоне светлый текст и наоборот");
             AddCombo(c2, "Вторая строка",
                 new string[] { "Исполнитель", "Альбом", "Плеер", "Исполнитель · плеер", "Плеер · исполнитель", "Нет" },
                 new string[] { "artist", "album", "app", "artist_app", "app_artist", "none" },
@@ -468,6 +487,12 @@ namespace NowPlaying
                 delegate { return Cfg.ThumbSize; }, delegate(int v) { Cfg.ThumbSize = v; });
             AddSlider(c1, "Скругление", 0, 40, 1, 1, 0, " px",
                 delegate { return Cfg.ThumbCorner; }, delegate(int v) { Cfg.ThumbCorner = v; });
+            AddCombo(c1, "Выравнивание по вертикали",
+                new string[] { "По центру", "Сверху", "Снизу" },
+                new string[] { "center", "top", "bottom" },
+                delegate { return Cfg.ThumbVAlign; }, delegate(string v) { Cfg.ThumbVAlign = v; });
+            AddSlider(c1, "Сдвиг от края", -60, 60, 1, 1, 0, " px",
+                delegate { return Cfg.ThumbOffset; }, delegate(int v) { Cfg.ThumbOffset = v; });
             AddToggle(c1, "Заглушка без обложки", delegate { return Cfg.ThumbPlaceholder; },
                 delegate(bool v) { Cfg.ThumbPlaceholder = v; });
 
@@ -655,6 +680,13 @@ namespace NowPlaying
         }
 
         // ================= общее =================
+
+        void RebuildPage()
+        {
+            int keep = host.ScrollY;
+            ShowPage(page);
+            host.ScrollTo(keep);
+        }
 
         void Raise()
         {

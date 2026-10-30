@@ -46,6 +46,7 @@ namespace NowPlaying
         public int MarqueeGap = 40;
         public bool DimPaused = false;
         public bool TextShadow = false;
+        public string TextColorMode = "auto";  // auto | light | dark | custom
         public int LineSpacing = -2;           // дополнительный отступ между строками, px
         public string VAlign = "center";      // top | center | bottom
 
@@ -53,6 +54,8 @@ namespace NowPlaying
         public string ThumbSide = "right";    // none | left | right
         public int ThumbSize = 27;            // 0 = авто (по высоте)
         public int ThumbCorner = 2;           // px (0 = квадрат)
+        public int ThumbOffset = 0;           // сдвиг обложки от края, px
+        public string ThumbVAlign = "center"; // top | center | bottom
         public bool ThumbPlaceholder = true;  // рисовать «ноту», если обложки нет
         public bool Progress = true;
         public string ProgressColor = "255,255,255";
@@ -99,9 +102,11 @@ namespace NowPlaying
             Align = o.Align; SecondLine = o.SecondLine;
             Marquee = o.Marquee; MarqueeSpeed = o.MarqueeSpeed; MarqueeGap = o.MarqueeGap;
             DimPaused = o.DimPaused;
-            TextShadow = o.TextShadow; LineSpacing = o.LineSpacing; VAlign = o.VAlign;
+            TextShadow = o.TextShadow; TextColorMode = o.TextColorMode;
+            LineSpacing = o.LineSpacing; VAlign = o.VAlign;
             ThumbSide = o.ThumbSide; ThumbSize = o.ThumbSize; ThumbCorner = o.ThumbCorner;
             ThumbPlaceholder = o.ThumbPlaceholder;
+            ThumbOffset = o.ThumbOffset; ThumbVAlign = o.ThumbVAlign;
             Progress = o.Progress; ProgressColor = o.ProgressColor;
             ProgressHeight = o.ProgressHeight; ProgressAlpha = o.ProgressAlpha;
             ProgressOffset = o.ProgressOffset;
@@ -212,6 +217,9 @@ namespace NowPlaying
                         case "marqueegap": if (int.TryParse(v, out iv)) c.MarqueeGap = Clamp(iv, 0, 200); break;
                         case "dimpaused": if (bool.TryParse(v, out bv)) c.DimPaused = bv; break;
                         case "textshadow": if (bool.TryParse(v, out bv)) c.TextShadow = bv; break;
+                        case "textcolormode": if (v == "auto" || v == "light" || v == "dark" || v == "custom") c.TextColorMode = v; break;
+                        case "thumboffset": if (int.TryParse(v, out iv)) c.ThumbOffset = Clamp(iv, -60, 60); break;
+                        case "thumbvalign": if (v == "top" || v == "center" || v == "bottom") c.ThumbVAlign = v; break;
                         case "linespacing": if (int.TryParse(v, out iv)) c.LineSpacing = Clamp(iv, -4, 16); break;
                         case "valign": if (v == "top" || v == "center" || v == "bottom") c.VAlign = v; break;
                         case "gradient": if (bool.TryParse(v, out bv)) c.Gradient = bv; break;
@@ -300,6 +308,7 @@ namespace NowPlaying
                 sb.AppendLine("marqueeGap=" + MarqueeGap);
                 sb.AppendLine("dimPaused=" + DimPaused);
                 sb.AppendLine("textShadow=" + TextShadow);
+                sb.AppendLine("textColorMode=" + TextColorMode);
                 sb.AppendLine("lineSpacing=" + LineSpacing);
                 sb.AppendLine("valign=" + VAlign);
                 sb.AppendLine();
@@ -307,6 +316,8 @@ namespace NowPlaying
                 sb.AppendLine("thumbside=" + ThumbSide);
                 sb.AppendLine("thumbsize=" + ThumbSize);
                 sb.AppendLine("thumbcorner=" + ThumbCorner);
+                sb.AppendLine("thumbOffset=" + ThumbOffset);
+                sb.AppendLine("thumbValign=" + ThumbVAlign);
                 sb.AppendLine("thumbPlaceholder=" + ThumbPlaceholder);
                 sb.AppendLine("progress=" + Progress);
                 sb.AppendLine("progressColor=" + ProgressColor);
