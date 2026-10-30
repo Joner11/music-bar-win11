@@ -1,0 +1,18 @@
+# сборка
+*.exe
+*.pdb
+*.obj
+build.log
+dist/
+
+# настройки и логи конкретной машины
+nowplaying.ini
+error.log
+
+# временные артефакты отладки
+*.png
+!docs/*.png
+*.ps1
+!tools/*.ps1
+smtc.txt
+tb.txt

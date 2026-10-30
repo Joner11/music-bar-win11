@@ -1,0 +1,88 @@
+Inno Setup 6 Command-Line Compiler
+Copyright (C) 1997-2026 Jordan Russell. All rights reserved.
+Portions Copyright (C) 2000-2026 Martijn Laan. All rights reserved.
+Portions Copyright (C) 2001-2004 Alex Yackimoff. All rights reserved.
+https://www.innosetup.com
+
+Compiler engine version: Inno Setup 6.7.3
+Non-commercial use only
+
+Preprocessing
+   Reading file: C:\Users\user\AppData\Local\Programs\Inno Setup 6\ISPPBuiltins.iss
+Parsing [Setup] section, line 19
+Parsing [Setup] section, line 20
+Parsing [Setup] section, line 21
+Parsing [Setup] section, line 22
+Parsing [Setup] section, line 23
+Parsing [Setup] section, line 24
+Parsing [Setup] section, line 25
+Parsing [Setup] section, line 26
+Parsing [Setup] section, line 29
+Parsing [Setup] section, line 30
+Parsing [Setup] section, line 31
+Parsing [Setup] section, line 32
+Parsing [Setup] section, line 33
+Parsing [Setup] section, line 34
+Parsing [Setup] section, line 37
+Parsing [Setup] section, line 38
+Parsing [Setup] section, line 39
+Parsing [Setup] section, line 41
+Parsing [Setup] section, line 42
+Parsing [Setup] section, line 43
+Parsing [Setup] section, line 44
+Parsing [Setup] section, line 45
+Parsing [Setup] section, line 46
+Parsing [Setup] section, line 47
+Parsing [Setup] section, line 48
+Parsing [Setup] section, line 49
+Parsing [Setup] section, line 50
+Creating output directory: C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist
+Reading file (WizardImageFile)
+Reading file (WizardSmallImageFile)
+Preparing Setup program executable
+   Verification successful
+   Updating icons (Setup.e32)
+   Updating version info (Setup.e32)
+Determining language code pages
+Parsing [Languages] section, line 53
+   Reading file: C:\Users\user\AppData\Local\Programs\Inno Setup 6\Languages\Russian.isl
+Parsing [Languages] section, line 54
+   Reading file: C:\Users\user\AppData\Local\Programs\Inno Setup 6\Default.isl
+   Messages in script file
+Reading default messages from Default.isl
+Parsing [Languages] section, line 53
+   Reading file: C:\Users\user\AppData\Local\Programs\Inno Setup 6\Languages\Russian.isl
+Parsing [Languages] section, line 54
+   Reading file: C:\Users\user\AppData\Local\Programs\Inno Setup 6\Default.isl
+Parsing [LangOptions], [Messages], and [CustomMessages] sections
+   Messages in script file
+Reading [Code] section
+Parsing [Tasks] section, line 78
+Parsing [Tasks] section, line 79
+Parsing [Icons] section, line 87
+Parsing [Icons] section, line 88
+Parsing [Icons] section, line 89
+Parsing [Icons] section, line 90
+Parsing [Registry] section, line 106
+Parsing [UninstallDelete] section, line 102
+Parsing [Run] section, line 94
+Parsing [UninstallRun] section, line 98
+Parsing [Files] section, line 82
+Parsing [Files] section, line 83
+Parsing [Files] section, line 84
+Compiling [Code] section
+Creating setup files
+   Verification successful
+   Updating icons (Setup.exe)
+   Compressing: C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\MusicBarWin11.exe
+   Compressing: C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\README.md
+   Compressing: C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\LICENSE
+   Compressing Setup program executable
+   Updating version info (Setup.exe)
+   Updating manifest (Setup.exe)
+
+
+Successful compile (1,109 sec). Resulting Setup program filename is:
+C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist\MusicBarWin11-Setup-1.1.0.exe
+
+Installer -> dist\
