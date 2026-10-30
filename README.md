@@ -7,13 +7,28 @@ Music Bar Win11 — маленькая плашка на панели задач
 Окно не мешает работе: оно не забирает фокус, не появляется в Alt+Tab и не перекрывает кнопки панели задач.
 Оформление настраивается полностью — от цветов и шрифтов до фона, построенного из обложки альбома.
 
-```
-┌──────────────────────────────┐
-│ euphoria                     │  ▄▄
-│ dOP, Sylvan Paul             │  ██
-│ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁   │  ▀▀
-└──────────────────────────────┘
-```
+<img src="docs/widget-dark.png" alt="Music Bar Win11 — виджет на панели задач" width="720">
+
+### Фон из обложки
+
+<table>
+<tr>
+<td><img src="docs/widget-blur.png" alt="Размытая обложка" width="360"></td>
+<td><img src="docs/widget-tint.png" alt="Размытая обложка с оттенком" width="360"></td>
+</tr>
+<tr>
+<td align="center"><sub>размытая обложка</sub></td>
+<td align="center"><sub>размытая обложка + оттенок</sub></td>
+</tr>
+<tr>
+<td><img src="docs/widget-color.png" alt="Цвет из обложки" width="360"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center"><sub>цвет из обложки</sub></td>
+<td></td>
+</tr>
+</table>
 
 ## Что внутри
 
@@ -102,6 +117,7 @@ make_installer.cmd
 | `build.cmd` | сборка одним вызовом `csc.exe` |
 | `installer.iss` | скрипт Inno Setup |
 | `make_installer.cmd` | сборка установщика одной командой |
+| `Shots.cs`, `make_shots.cmd` | рендер картинок виджета для README в `docs\` |
 
 ## Как это устроено
 

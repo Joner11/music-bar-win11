@@ -1,5 +1,6 @@
 # сборка
 *.exe
+Shots.exe
 *.pdb
 *.obj
 build.log
