@@ -10,25 +10,25 @@ namespace NowPlaying
     class Config
     {
         // ---- размеры ----
-        public int Width = 330;
-        public int Height = 44;
+        public int Width = 185;
+        public int Height = 40;
         public int RightMargin = 6;
         public int VertOffset = 0;
-        public int Corner = 8;
-        public int Padding = 8;
+        public int Corner = 5;
+        public int Padding = 4;
 
         // ---- фон ----
         public bool BgEnabled = true;
         public int BgR = 28, BgG = 28, BgB = 30;
-        public int OpacityPercent = 92;
+        public int OpacityPercent = 82;
 
         // ---- рамка ----
-        public bool BorderEnabled = false;
+        public bool BorderEnabled = true;
         public int BorderR = 255, BorderG = 255, BorderB = 255;
-        public int BorderAlpha = 55;
+        public int BorderAlpha = 35;
         public int BorderWidth = 1;
-        public bool Gradient = false;
-        public int BgR2 = 60, BgG2 = 60, BgB2 = 68;
+        public bool Gradient = true;
+        public int BgR2 = 21, BgG2 = 21, BgB2 = 21;
         public int GradientAngle = 90;
 
         // ---- текст ----
@@ -38,30 +38,30 @@ namespace NowPlaying
         public float ArtistSize = 8.25f;
         public bool ArtistBold = false;
         public string TitleColor = "255,255,255";
-        public string ArtistColor = "168,168,172";
+        public string ArtistColor = "216,216,218";
         public string Align = "left";         // left | center | right
         public string SecondLine = "artist";  // none | artist | album | app | artist_app | app_artist
-        public bool Marquee = true;
+        public bool Marquee = false;
         public int MarqueeSpeed = 90;         // px/сек
         public int MarqueeGap = 40;
-        public bool DimPaused = true;
+        public bool DimPaused = false;
         public bool TextShadow = false;
-        public int LineSpacing = 0;           // дополнительный отступ между строками, px
+        public int LineSpacing = -2;           // дополнительный отступ между строками, px
         public string VAlign = "center";      // top | center | bottom
 
         // ---- обложка ----
-        public string ThumbSide = "left";     // none | left | right
-        public int ThumbSize = 0;             // 0 = авто (по высоте)
-        public int ThumbCorner = 4;           // px (0 = квадрат)
+        public string ThumbSide = "right";    // none | left | right
+        public int ThumbSize = 27;            // 0 = авто (по высоте)
+        public int ThumbCorner = 2;           // px (0 = квадрат)
         public bool ThumbPlaceholder = true;  // рисовать «ноту», если обложки нет
-        public bool Progress = false;
+        public bool Progress = true;
         public string ProgressColor = "255,255,255";
         public int ProgressHeight = 2;
         public int ProgressAlpha = 120;
-        public int ProgressOffset = 0;        // сдвиг полосы вверх от нижнего края, px
+        public int ProgressOffset = -1;       // сдвиг полосы вверх от нижнего края, px
 
         // ---- фон из обложки ----
-        public string BgMode = "color";       // color | cover_blur | cover_blur_tint | cover_color
+        public string BgMode = "cover_blur_tint"; // color | cover_blur | cover_blur_tint | cover_color
         public int CoverBlur = 24;            // сила размытия 1..64
         public int CoverDark = 45;            // затемнение фона, %
         public int CoverSaturation = 120;     // насыщенность среднего цвета, %
@@ -69,7 +69,7 @@ namespace NowPlaying
         // ---- поведение ----
         public bool ShowPaused = true;
         public bool HideWhenIdle = true;
-        public bool AlwaysVisible = false;
+        public bool AlwaysVisible = true;
         public bool HideFullscreen = true;
         public string DoubleClick = "toggle"; // toggle | settings | none
         public string SingleClick = "settings"; // settings | toggle | next | prev | none

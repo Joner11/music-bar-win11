@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace NowPlaying
@@ -17,25 +19,34 @@ namespace NowPlaying
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(22, 22, 24);
+            BackColor = Color.FromArgb(15, 15, 18);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var g = e.Graphics;
+            Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(BackColor);
 
-            // имитация панели задач
             int tbH = 48;
-            using (var br = new SolidBrush(Color.FromArgb(30, 30, 34)))
-                g.FillRectangle(br, 0, Height - tbH, Width, tbH);
-            using (var pen = new Pen(Color.FromArgb(52, 52, 58)))
-                g.DrawLine(pen, 0, Height - tbH, Width, Height - tbH);
+            Rectangle bar = new Rectangle(0, Height - tbH, Width, tbH);
+            using (var br = new SolidBrush(Color.FromArgb(30, 30, 35)))
+                g.FillRectangle(br, bar);
+            using (var pen = new Pen(Theme.Sep))
+                g.DrawLine(pen, 0, bar.Top, Width, bar.Top);
+
+            // «кнопки» панели задач для контекста
+            int bx = Width - 10;
+            for (int i = 0; i < 3; i++)
+            {
+                Draw.FillRound(g, new Rectangle(bx - 30, bar.Top + 12, 24, 24), 6,
+                    Color.FromArgb(44, 44, 52));
+                bx -= 32;
+            }
 
             if (Cfg == null) return;
 
-            float avail = Width - 24;
+            float avail = Width - 40;
             float scale = Math.Min(1.0f, avail / Math.Max(1, Cfg.Width));
             int w = (int)Math.Round(Cfg.Width * scale);
             int h = (int)Math.Round(Cfg.Height * scale);
@@ -43,13 +54,15 @@ namespace NowPlaying
             using (var bmp = Renderer.Render(Cfg, Track, Thumb, ScrollPx, scale))
             {
                 int x = (Width - w) / 2;
-                int y = Height - tbH + (tbH - h) / 2;
+                int y = bar.Top + (tbH - h) / 2;
                 g.DrawImageUnscaled(bmp, x, y);
             }
 
-            using (var f = new Font("Segoe UI", 7.5f))
-            using (var br = new SolidBrush(Color.FromArgb(110, 110, 118)))
-                g.DrawString("предпросмотр (масштаб " + (int)Math.Round(scale * 100) + "%)", f, br, 8, Height - tbH - 18);
+            using (var f = Theme.F(7.5f, false))
+                Draw.Text(g, "панель задач · масштаб " + (int)Math.Round(scale * 100) + "%",
+                    f, Color.FromArgb(105, 105, 115),
+                    new Rectangle(10, bar.Top - 18, Width - 20, 16),
+                    StringAlignment.Near, StringAlignment.Center);
         }
     }
 
@@ -61,36 +74,20 @@ namespace NowPlaying
         public event Action LiveChanged;
         public event Action ClosedEvent;
 
-        bool loading = true;
-        TabControl tabs;
         PreviewBox preview;
         System.Windows.Forms.Timer previewTick;
         float scroll;
+        bool building;
 
-        // контролы
-        NumericUpDown nWidth, nHeight, nRightMargin, nVertOffset, nCorner, nPadding;
-        CheckBox cBgEnabled, cGradient, cBorderEnabled;
-        ComboBox cbBgMode;
-        NumericUpDown nCoverBlur, nCoverDark, nCoverSat;
-        NumericUpDown nOpacity, nBorderAlpha, nBorderWidth, nGradAngle;
-        Button bBg, bBg2, bBorderCol;
-        TextBox tbFont;
-        NumericUpDown nTitleSize, nArtistSize, nLineSpacing;
-        CheckBox cTitleBold, cArtistBold, cMarquee, cDimPaused, cTextShadow;
-        Button bTitleCol, bArtistCol;
-        ComboBox cbAlign, cbSecond, cbVAlign;
-        NumericUpDown nMarqueeSpeed, nMarqueeGap;
-        ComboBox cbThumbSide;
-        NumericUpDown nThumbSize, nThumbCorner;
-        CheckBox cThumbPlaceholder;
-        CheckBox cProgress;
-        Button bProgressCol;
-        NumericUpDown nProgressHeight, nProgressAlpha, nProgressOffset;
-        CheckBox cShowPaused, cHideIdle, cAlways, cHideFull, cAutostart;
-        ComboBox cbDoubleClick, cbSingleClick;
+        ScrollHost host;
+        NavButton[] navs;
+        int page;
+        static readonly string[] PageNames = {
+            "Размер и положение", "Фон", "Текст", "Обложка", "Поведение" };
 
         public SettingsForm(Config cfg, TrackInfo track, Image thumb)
         {
+            building = true;
             Cfg = cfg; Track = track; Thumb = thumb;
 
             Text = "Music Bar Win11 — настройки";
@@ -98,85 +95,24 @@ namespace NowPlaying
             MaximizeBox = true;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(760, 740);
-            MinimumSize = new Size(660, 520);
-            Font = new Font("Segoe UI", 9f);
-            BackColor = Color.FromArgb(32, 32, 36);
-            ForeColor = Color.White;
+            ClientSize = new Size(980, 780);
+            MinimumSize = new Size(900, 620);
+            Font = Theme.F(9f, false);
+            BackColor = Theme.Bg;
+            ForeColor = Theme.Text;
+            DoubleBuffered = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            // ---- низ ----
-            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 54, BackColor = Color.FromArgb(40, 40, 45) };
-            Controls.Add(bottom);
+            BuildShell();
+            building = false;
+            ShowPage(0);
 
-            var bReset = new Button
+            previewTick = new System.Windows.Forms.Timer();
+            previewTick.Interval = 40;
+            previewTick.Tick += delegate
             {
-                Text = "Сбросить всё",
-                Left = 14, Top = 12, Width = 130, Height = 30,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(58, 58, 64),
-                ForeColor = Color.White
-            };
-            bReset.FlatAppearance.BorderColor = Color.FromArgb(84, 84, 92);
-            bReset.Click += (s, e) =>
-            {
-                if (MessageBox.Show(this, "Сбросить все настройки к значениям по умолчанию?", "Music Bar Win11",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                {
-                    Cfg.CopyFrom(new Config());
-                    LoadFromConfig();
-                    Raise();
-                }
-            };
-
-            var bClose = new Button
-            {
-                Text = "Готово", Width = 120, Height = 32, Top = 11,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0, 120, 212),
-                ForeColor = Color.White,
-                DialogResult = DialogResult.OK
-            };
-            bClose.FlatAppearance.BorderSize = 0;
-            bClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-
-            bottom.Controls.Add(bReset);
-            bottom.Controls.Add(bClose);
-            bottom.Resize += (s, e) => { bClose.Left = bottom.Width - bClose.Width - 16; };
-            bClose.Left = bottom.Width - bClose.Width - 16;
-
-            // ---- предпросмотр ----
-            var previewHost = new Panel { Dock = DockStyle.Top, Height = 150, BackColor = Color.FromArgb(22, 22, 24), Padding = new Padding(0) };
-            preview = new PreviewBox { Dock = DockStyle.Fill, Cfg = cfg, Track = track, Thumb = thumb };
-            previewHost.Controls.Add(preview);
-            Controls.Add(previewHost);
-
-            // ---- вкладки ----
-            tabs = new TabControl
-            {
-                Dock = DockStyle.Fill,
-                DrawMode = TabDrawMode.OwnerDrawFixed,
-                SizeMode = TabSizeMode.Fixed,
-                ItemSize = new Size(131, 32),
-                Padding = new Point(14, 6)
-            };
-            tabs.DrawItem += DrawTab;
-            Controls.Add(tabs);
-            tabs.BringToFront();
-
-            BuildSizeTab();
-            BuildBackgroundTab();
-            BuildTextTab();
-            BuildThumbTab();
-            BuildBehaviorTab();
-
-            LoadFromConfig();
-            loading = false;
-
-            previewTick = new System.Windows.Forms.Timer { Interval = 40 };
-            previewTick.Tick += (s, e) =>
-            {
-                if (Cfg.Marquee && Cfg.MarqueeSpeed > 0 && Cfg.Align == "left") scroll += Cfg.MarqueeSpeed * 0.04f;
+                scroll += 0.6f;
+                if (scroll > 9000f) scroll = 0f;
                 preview.ScrollPx = scroll;
                 preview.Invalidate();
             };
@@ -184,551 +120,544 @@ namespace NowPlaying
 
             int startTab = 0;
             int.TryParse(Environment.GetEnvironmentVariable("NP_START_TAB"), out startTab);
-            if (startTab > 0 && startTab < tabs.TabPages.Count) tabs.SelectedIndex = startTab;
+            if (startTab > 0 && startTab < PageNames.Length) ShowPage(startTab);
 
             if (Environment.GetEnvironmentVariable("NP_DUMP_LAYOUT") == "1")
-            {
-                Shown += (s2, e2) => DumpLayout();
-            }
+                Shown += delegate { DumpLayout(); };
 
-            FormClosed += (s, e) =>
+            FormClosed += delegate
             {
                 previewTick.Stop();
                 if (ClosedEvent != null) ClosedEvent();
             };
         }
 
-        void DumpLayout()
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("FORM client=" + ClientSize.Width + "x" + ClientSize.Height);
-            DumpCtrl(sb, this, 0);
-            try { System.IO.File.WriteAllText(System.IO.Path.Combine(Application.StartupPath, "layout.txt"), sb.ToString()); } catch { }
-        }
+        // ================= каркас окна =================
 
-        void DumpCtrl(System.Text.StringBuilder sb, Control parent, int depth)
+        void BuildShell()
         {
-            foreach (Control c in parent.Controls)
+            Panel sidebar = new Panel();
+            sidebar.Dock = DockStyle.Left;
+            sidebar.Width = 214;
+            sidebar.BackColor = Theme.Sidebar;
+            Controls.Add(sidebar);
+
+            Label brand = new Label();
+            brand.Text = "Music Bar";
+            brand.Font = Theme.F(12f, true);
+            brand.ForeColor = Theme.Text;
+            brand.AutoSize = false;
+            brand.Left = 22; brand.Top = 18; brand.Width = 180; brand.Height = 24;
+            brand.BackColor = Theme.Sidebar;
+            sidebar.Controls.Add(brand);
+
+            Label brand2 = new Label();
+            brand2.Text = "Windows 11 · виджет";
+            brand2.Font = Theme.F(8f, false);
+            brand2.ForeColor = Theme.Sub;
+            brand2.AutoSize = false;
+            brand2.Left = 22; brand2.Top = 42; brand2.Width = 180; brand2.Height = 18;
+            brand2.BackColor = Theme.Sidebar;
+            sidebar.Controls.Add(brand2);
+
+            navs = new NavButton[PageNames.Length];
+            for (int i = 0; i < PageNames.Length; i++)
             {
-                sb.AppendLine(new string(' ', depth * 2) + c.GetType().Name + " [" + c.Name + "] " +
-                    "b=" + c.Left + "," + c.Top + "," + c.Width + "x" + c.Height +
-                    " dock=" + c.Dock + " vis=" + c.Visible +
-                    (c is Label ? " text=\"" + ((Label)c).Text + "\"" : "") +
-                    (c is NumericUpDown ? " val=" + ((NumericUpDown)c).Value : ""));
-                if (c.Controls.Count > 0) DumpCtrl(sb, c, depth + 1);
+                NavButton nb = new NavButton(PageNames[i]);
+                nb.Left = 10; nb.Top = 88 + i * 44; nb.Width = 194;
+                int idx = i;
+                nb.Click += delegate { ShowPage(idx); };
+                sidebar.Controls.Add(nb);
+                navs[i] = nb;
             }
+
+            Label ver = new Label();
+            ver.Text = "версия " + Application.ProductVersion;
+            ver.Font = Theme.F(7.5f, false);
+            ver.ForeColor = Color.FromArgb(90, 90, 100);
+            ver.AutoSize = false;
+            ver.Left = 22; ver.Width = 180; ver.Height = 18;
+            ver.Top = sidebar.Height - 30;
+            ver.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            ver.BackColor = Theme.Sidebar;
+            sidebar.Controls.Add(ver);
+
+            // ---- футер ----
+            Panel footer = new Panel();
+            footer.Dock = DockStyle.Bottom;
+            footer.Height = 62;
+            footer.BackColor = Theme.Bg;
+            Controls.Add(footer);
+
+            Panel footLine = new Panel();
+            footLine.Dock = DockStyle.Top;
+            footLine.Height = 1;
+            footLine.BackColor = Theme.Sep;
+            footer.Controls.Add(footLine);
+
+            Button reset = FlatButton("Сбросить всё", 132, false);
+            reset.Left = 20; reset.Top = 14; reset.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            reset.Click += delegate { ResetAll(); };
+            footer.Controls.Add(reset);
+
+            Button done = FlatButton("Готово", 118, true);
+            done.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+            done.Left = footer.Width - 138;
+            done.Top = 14;
+            done.Click += delegate { Close(); };
+            footer.Controls.Add(done);
+            footer.Resize += delegate { done.Left = footer.Width - 138; };
+
+            // ---- предпросмотр ----
+            Panel top = new Panel();
+            top.Dock = DockStyle.Top;
+            top.Height = 150;
+            top.BackColor = Theme.Bg;
+            Controls.Add(top);
+
+            preview = new PreviewBox();
+            preview.Dock = DockStyle.Fill;
+            preview.Cfg = Cfg;
+            preview.Track = Track;
+            preview.Thumb = Thumb;
+            preview.Margin = new Padding(0);
+            top.Padding = new Padding(20, 10, 26, 6);
+            top.Controls.Add(preview);
+
+            // ---- содержимое ----
+            host = new ScrollHost();
+            host.Dock = DockStyle.Fill;
+            Controls.Add(host);
+            host.BringToFront();
         }
 
-        void DrawTab(object sender, DrawItemEventArgs e)
+        Button FlatButton(string text, int width, bool accent)
         {
-            var page = tabs.TabPages[e.Index];
-            bool sel = e.Index == tabs.SelectedIndex;
-            using (var b = new SolidBrush(sel ? Color.FromArgb(46, 46, 52) : Color.FromArgb(36, 36, 40)))
-                e.Graphics.FillRectangle(b, e.Bounds);
-            if (sel)
-                using (var b = new SolidBrush(Color.FromArgb(0, 120, 212)))
-                    e.Graphics.FillRectangle(b, new Rectangle(e.Bounds.X, e.Bounds.Bottom - 3, e.Bounds.Width, 3));
-            TextRenderer.DrawText(e.Graphics, page.Text, new Font("Segoe UI", 9f), e.Bounds,
-                sel ? Color.White : Color.FromArgb(165, 165, 172),
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        }
-
-        // ================= построение вкладок =================
-
-        TabPage NewPage(string name)
-        {
-            var p = new TabPage(name)
-            {
-                BackColor = Color.FromArgb(46, 46, 52),
-                ForeColor = Color.White,
-                AutoScroll = true,
-                Padding = new Padding(0)
-            };
-            tabs.TabPages.Add(p);
-            return p;
-        }
-
-        TableLayoutPanel NewGrid(TabPage page)
-        {
-            var t = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                ColumnCount = 2,
-                Padding = new Padding(18, 14, 18, 20),
-                BackColor = Color.Transparent
-            };
-            t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54f));
-            t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46f));
-            page.Controls.Add(t);
-            return t;
-        }
-
-        int NextRow(TableLayoutPanel t)
-        {
-            t.RowCount = t.RowStyles.Count + 1;
-            t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            return t.RowStyles.Count - 1;
-        }
-
-        void AddRow(TableLayoutPanel t, string label, Control c)
-        {
-            int row = NextRow(t);
-            var l = new Label
-            {
-                Text = label,
-                Dock = DockStyle.Fill,
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(214, 214, 220),
-                Margin = new Padding(0, 4, 10, 4),
-                Height = 26
-            };
-            if (c is CheckBox)
-            {
-                c.Dock = DockStyle.Fill;
-            }
-            else
-            {
-                c.Dock = DockStyle.None;
-                c.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-                c.Width = 190;
-                if (c is Button) c.Width = 120;
-            }
-            c.Margin = new Padding(0, 4, 0, 4);
-            c.MinimumSize = new Size(0, 24);
-            t.Controls.Add(l, 0, row);
-            t.Controls.Add(c, 1, row);
-        }
-
-        void AddSection(TableLayoutPanel t, string text)
-        {
-            int row = NextRow(t);
-            var l = new Label
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                AutoSize = false,
-                Height = 30,
-                TextAlign = ContentAlignment.BottomLeft,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(120, 170, 240),
-                Margin = new Padding(0, 10, 0, 2)
-            };
-            t.Controls.Add(l, 0, row);
-            t.SetColumnSpan(l, 2);
-        }
-
-        void AddHint(TableLayoutPanel t, string text)
-        {
-            int row = NextRow(t);
-            var l = new Label
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                AutoSize = true,
-                MaximumSize = new Size(560, 0),
-                Font = new Font("Segoe UI", 8.25f),
-                ForeColor = Color.FromArgb(140, 140, 150),
-                Margin = new Padding(0, 0, 0, 6)
-            };
-            t.Controls.Add(l, 0, row);
-            t.SetColumnSpan(l, 2);
-        }
-
-        NumericUpDown Num(decimal min, decimal max, decimal step, int decimals)
-        {
-            var n = new NumericUpDown
-            {
-                Minimum = min,
-                Maximum = max,
-                Increment = step,
-                DecimalPlaces = decimals,
-                BackColor = Color.FromArgb(36, 36, 40),
-                ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle,
-                TextAlign = HorizontalAlignment.Left
-            };
-            n.ValueChanged += (s, e) => Raise();
-            return n;
-        }
-
-        CheckBox Chk(string text)
-        {
-            var c = new CheckBox
-            {
-                Text = text,
-                ForeColor = Color.White,
-                AutoSize = false,
-                Height = 24,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            c.CheckedChanged += (s, e) => Raise();
-            return c;
-        }
-
-        Button ColorBtn()
-        {
-            var b = new Button
-            {
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.Black,
-                ForeColor = Color.White,
-                Height = 24,
-                Text = ""
-            };
-            b.FlatAppearance.BorderColor = Color.FromArgb(104, 104, 112);
-            b.FlatAppearance.BorderSize = 1;
-            b.Click += (s, e) =>
-            {
-                using (var cd = new ColorDialog { Color = b.BackColor, FullOpen = true, AnyColor = true })
-                {
-                    if (cd.ShowDialog(this) == DialogResult.OK)
-                    {
-                        SetColorBtn(b, cd.Color);
-                        Raise();
-                    }
-                }
-            };
+            Button b = new Button();
+            b.Text = text;
+            b.Width = width;
+            b.Height = 34;
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderSize = accent ? 0 : 1;
+            b.FlatAppearance.BorderColor = Color.FromArgb(64, 64, 74);
+            b.BackColor = accent ? Theme.Accent : Theme.Card;
+            b.ForeColor = accent ? Color.FromArgb(12, 20, 26) : Theme.Text;
+            b.Font = Theme.F(9f, accent);
+            b.Cursor = Cursors.Hand;
+            b.UseVisualStyleBackColor = false;
             return b;
         }
 
-        ComboBox Combo(string[] items, string[] values, bool editable)
+        void ResetAll()
         {
-            var c = new ComboBox
+            Config d = new Config();
+            Cfg.CopyFrom(d);
+            ShowPage(page);
+            Raise();
+        }
+
+        void ShowPage(int idx)
+        {
+            page = idx;
+            for (int i = 0; i < navs.Length; i++) { navs[i].Active = (i == idx); navs[i].Invalidate(); }
+
+            building = true;
+            host.SuspendLayout();
+            host.Canvas.SuspendLayout();
+            host.Canvas.Controls.Clear();
+            host.Canvas.Controls.Add(BuildPage(idx));
+            host.Canvas.ResumeLayout(true);
+            host.ResumeLayout(true);
+            building = false;
+            host.ScrollTo(0);
+            LayoutPage();
+        }
+
+        Control BuildPage(int idx)
+        {
+            int width = Math.Max(420, host.Width - 8);
+            Panel col = new Panel();
+            col.BackColor = Theme.Bg;
+            col.Left = 0; col.Top = 0;
+            col.Width = width;
+            col.Height = 10;
+
+            List<Card> cards = new List<Card>();
+            if (idx == 0) BuildSize(cards);
+            else if (idx == 1) BuildBackground(cards);
+            else if (idx == 2) BuildText(cards);
+            else if (idx == 3) BuildCover(cards);
+            else BuildBehavior(cards);
+
+            int y = 8;
+            foreach (Card c in cards)
             {
-                DropDownStyle = editable ? ComboBoxStyle.DropDown : ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(36, 36, 40),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Tag = values
-            };
-            c.Items.AddRange(items);
-            if (!editable) c.SelectedIndexChanged += (s, e) => Raise();
-            else c.TextChanged += (s, e) => Raise();
-            return c;
+                c.Left = 0; c.Top = y; c.Width = width;
+                c.Relayout(width);
+                col.Controls.Add(c);
+                y += c.Height + 12;
+            }
+            col.Height = y + 4;
+            col.Tag = cards;
+            return col;
         }
 
-        void BuildSizeTab()
+        void LayoutPage()
         {
-            var p = NewPage("Размер");
-            var t = NewGrid(p);
-
-            AddSection(t, "Габариты");
-            nWidth = Num(120, 1600, 5, 0); AddRow(t, "Ширина, px", nWidth);
-            nHeight = Num(20, 160, 1, 0); AddRow(t, "Высота, px", nHeight);
-            nCorner = Num(0, 40, 1, 0); AddRow(t, "Скругление углов, px", nCorner);
-            nPadding = Num(0, 24, 1, 0); AddRow(t, "Внутренние отступы, px", nPadding);
-
-            AddSection(t, "Положение на панели задач");
-            nRightMargin = Num(-400, 600, 5, 0); AddRow(t, "Отступ от значков трея", nRightMargin);
-            nVertOffset = Num(-60, 60, 1, 0); AddRow(t, "Смещение по вертикали", nVertOffset);
-            AddHint(t, "Отрицательный отступ сдвигает виджет вправо (за значки трея), отрицательное смещение — вверх.");
-        }
-
-        void BuildBackgroundTab()
-        {
-            var p = NewPage("Фон");
-            var t = NewGrid(p);
-
-            AddSection(t, "Подложка");
-            cBgEnabled = Chk("Показывать подложку"); AddRow(t, "Подложка", cBgEnabled);
-            cbBgMode = Combo(
-                new[] { "Сплошной цвет / градиент", "Размытая обложка", "Размытая обложка + оттенок", "Цвет из обложки" },
-                new[] { "color", "cover_blur", "cover_blur_tint", "cover_color" }, false);
-            cbBgMode.DropDownWidth = 320;
-            AddRow(t, "Фон из обложки", cbBgMode);
-            bBg = ColorBtn(); AddRow(t, "Основной цвет (и оттенок)", bBg);
-            nOpacity = Num(0, 100, 5, 0); AddRow(t, "Непрозрачность, %", nOpacity);
-            AddHint(t, "0 % — виден только текст поверх панели задач, без плашки. " +
-                        "«Размытая обложка» берёт текущую обложку трека, пока он играет.");
-
-            AddSection(t, "Обработка обложки-фона");
-            nCoverBlur = Num(1, 64, 1, 0); AddRow(t, "Сила размытия", nCoverBlur);
-            nCoverDark = Num(0, 95, 5, 0); AddRow(t, "Затемнение, %", nCoverDark);
-            nCoverSat = Num(0, 300, 10, 0); AddRow(t, "Насыщенность цвета, %", nCoverSat);
-            AddHint(t, "Затемнение и насыщенность действуют для размытого фона и «цвета из обложки».");
-
-            AddSection(t, "Градиент");
-            cGradient = Chk("Градиентная заливка"); AddRow(t, "Градиент", cGradient);
-            bBg2 = ColorBtn(); AddRow(t, "Второй цвет градиента", bBg2);
-            nGradAngle = Num(0, 360, 15, 0); AddRow(t, "Угол градиента, °", nGradAngle);
-
-            AddSection(t, "Рамка");
-            cBorderEnabled = Chk("Показывать рамку"); AddRow(t, "Рамка", cBorderEnabled);
-            bBorderCol = ColorBtn(); AddRow(t, "Цвет рамки", bBorderCol);
-            nBorderWidth = Num(1, 6, 1, 0); AddRow(t, "Толщина рамки, px", nBorderWidth);
-            nBorderAlpha = Num(0, 255, 5, 0); AddRow(t, "Яркость рамки (0–255)", nBorderAlpha);
-        }
-
-        void BuildTextTab()
-        {
-            var p = NewPage("Текст");
-            var t = NewGrid(p);
-
-            AddSection(t, "Шрифт");
-            tbFont = new TextBox
+            if (host == null || host.Canvas.Controls.Count == 0) return;
+            Control col = host.Canvas.Controls[0];
+            int width = Math.Max(420, host.Width - 8);
+            if (col.Width != width)
             {
-                Text = Cfg.FontName,
-                BackColor = Color.FromArgb(36, 36, 40),
-                ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
+                col.Width = width;
+                List<Card> cards = col.Tag as List<Card>;
+                if (cards != null)
+                {
+                    int y = 8;
+                    foreach (Card c in cards)
+                    {
+                        c.Width = width;
+                        c.Relayout(width);
+                        c.Top = y;
+                        y += c.Height + 12;
+                    }
+                    col.Height = y + 4;
+                }
+            }
+            host.Canvas.Height = col.Height;
+            host.ContentHeight = col.Height;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (building) return;
+            LayoutPage();
+        }
+
+        // ================= конструкторы страниц =================
+
+        void BuildSize(List<Card> cards)
+        {
+            Card c1 = Card2("Размер и положение");
+            Card c2 = Card2("Скругление и отступы");
+            cards.Add(c1); cards.Add(c2);
+
+            AddSlider(c1, "Ширина виджета", 120, 700, 1, 1, 0, " px",
+                delegate { return Cfg.Width; }, delegate(int v) { Cfg.Width = v; });
+            AddSlider(c1, "Высота виджета", 20, 120, 1, 1, 0, " px",
+                delegate { return Cfg.Height; }, delegate(int v) { Cfg.Height = v; });
+            AddSlider(c1, "Отступ справа", -200, 400, 1, 1, 0, " px",
+                delegate { return Cfg.RightMargin; }, delegate(int v) { Cfg.RightMargin = v; });
+            AddSlider(c1, "Смещение по вертикали", -40, 40, 1, 1, 0, " px",
+                delegate { return Cfg.VertOffset; }, delegate(int v) { Cfg.VertOffset = v; });
+
+            AddSlider(c2, "Радиус скругления", 0, 40, 1, 1, 0, " px",
+                delegate { return Cfg.Corner; }, delegate(int v) { Cfg.Corner = v; });
+            AddSlider(c2, "Внутренний отступ", 0, 24, 1, 1, 0, " px",
+                delegate { return Cfg.Padding; }, delegate(int v) { Cfg.Padding = v; });
+            AddSlider(c2, "Ширина обложки", 0, 96, 1, 1, 0, " px",
+                delegate { return Cfg.ThumbSize; }, delegate(int v) { Cfg.ThumbSize = v; });
+            AddHint(c2, "0 — размер по высоте виджета");
+        }
+
+        void BuildBackground(List<Card> cards)
+        {
+            Card c1 = Card2("Фон");
+            Card c2 = Card2("Градиент и рамка");
+            Card c3 = Card2("Фон из обложки");
+            cards.Add(c1); cards.Add(c2); cards.Add(c3);
+
+            AddToggle(c1, "Свой цвет фона", delegate { return Cfg.BgEnabled; },
+                delegate(bool v) { Cfg.BgEnabled = v; });
+            AddColor(c1, "Цвет фона", delegate { return Cfg.BgR + "," + Cfg.BgG + "," + Cfg.BgB; },
+                delegate(string v) { Cfg.BgR = Config.ParseColor(v, Color.Black).R; Cfg.BgG = Config.ParseColor(v, Color.Black).G; Cfg.BgB = Config.ParseColor(v, Color.Black).B; });
+            AddSlider(c1, "Прозрачность фона", 0, 100, 1, 1, 0, " %",
+                delegate { return Cfg.OpacityPercent; }, delegate(int v) { Cfg.OpacityPercent = v; });
+
+            AddToggle(c2, "Градиент", delegate { return Cfg.Gradient; },
+                delegate(bool v) { Cfg.Gradient = v; });
+            AddColor(c2, "Второй цвет", delegate { return Cfg.BgR2 + "," + Cfg.BgG2 + "," + Cfg.BgB2; },
+                delegate(string v) { Color k = Config.ParseColor(v, Color.Black); Cfg.BgR2 = k.R; Cfg.BgG2 = k.G; Cfg.BgB2 = k.B; });
+            AddSlider(c2, "Угол градиента", 0, 360, 1, 1, 0, "°",
+                delegate { return Cfg.GradientAngle; }, delegate(int v) { Cfg.GradientAngle = v; });
+            AddToggle(c2, "Рамка", delegate { return Cfg.BorderEnabled; },
+                delegate(bool v) { Cfg.BorderEnabled = v; });
+            AddColor(c2, "Цвет рамки", delegate { return Cfg.BorderR + "," + Cfg.BorderG + "," + Cfg.BorderB; },
+                delegate(string v) { Color k = Config.ParseColor(v, Color.White); Cfg.BorderR = k.R; Cfg.BorderG = k.G; Cfg.BorderB = k.B; });
+            AddSlider(c2, "Яркость рамки", 0, 255, 1, 1, 0, "",
+                delegate { return Cfg.BorderAlpha; }, delegate(int v) { Cfg.BorderAlpha = v; });
+            AddSlider(c2, "Толщина рамки", 1, 6, 1, 1, 0, " px",
+                delegate { return Cfg.BorderWidth; }, delegate(int v) { Cfg.BorderWidth = v; });
+
+            AddCombo(c3, "Режим фона",
+                new string[] { "Свой цвет", "Размытие обложки", "Размытие + оттенок", "Цвет обложки" },
+                new string[] { "color", "cover_blur", "cover_blur_tint", "cover_color" },
+                delegate { return Cfg.BgMode; }, delegate(string v) { Cfg.BgMode = v; });
+            AddSlider(c3, "Сила размытия", 1, 64, 1, 1, 0, "",
+                delegate { return Cfg.CoverBlur; }, delegate(int v) { Cfg.CoverBlur = v; });
+            AddSlider(c3, "Затемнение", 0, 95, 1, 1, 0, " %",
+                delegate { return Cfg.CoverDark; }, delegate(int v) { Cfg.CoverDark = v; });
+            AddSlider(c3, "Насыщенность", 0, 300, 1, 1, 0, " %",
+                delegate { return Cfg.CoverSaturation; }, delegate(int v) { Cfg.CoverSaturation = v; });
+        }
+
+        void BuildText(List<Card> cards)
+        {
+            Card c1 = Card2("Шрифт");
+            Card c2 = Card2("Строки");
+            Card c3 = Card2("Бегущая строка");
+            cards.Add(c1); cards.Add(c2); cards.Add(c3);
+
+            AddFontCombo(c1, "Шрифт", delegate { return Cfg.FontName; },
+                delegate(string v) { Cfg.FontName = v; });
+            AddSlider(c1, "Размер названия", 20, 120, 1, 4, 2, " pt",
+                delegate { return (int)Math.Round(Cfg.TitleSize * 4); },
+                delegate(int v) { Cfg.TitleSize = v / 4f; });
+            AddToggle(c1, "Название жирным", delegate { return Cfg.TitleBold; },
+                delegate(bool v) { Cfg.TitleBold = v; });
+            AddSlider(c1, "Размер исполнителя", 16, 96, 1, 4, 2, " pt",
+                delegate { return (int)Math.Round(Cfg.ArtistSize * 4); },
+                delegate(int v) { Cfg.ArtistSize = v / 4f; });
+            AddToggle(c1, "Исполнитель жирным", delegate { return Cfg.ArtistBold; },
+                delegate(bool v) { Cfg.ArtistBold = v; });
+
+            AddColor(c2, "Цвет названия", delegate { return Cfg.TitleColor; },
+                delegate(string v) { Cfg.TitleColor = v; });
+            AddColor(c2, "Цвет исполнителя", delegate { return Cfg.ArtistColor; },
+                delegate(string v) { Cfg.ArtistColor = v; });
+            AddCombo(c2, "Вторая строка",
+                new string[] { "Исполнитель", "Альбом", "Плеер", "Исполнитель · плеер", "Плеер · исполнитель", "Нет" },
+                new string[] { "artist", "album", "app", "artist_app", "app_artist", "none" },
+                delegate { return Cfg.SecondLine; }, delegate(string v) { Cfg.SecondLine = v; });
+            AddCombo(c2, "Выравнивание",
+                new string[] { "По левому краю", "По центру", "По правому краю" },
+                new string[] { "left", "center", "right" },
+                delegate { return Cfg.Align; }, delegate(string v) { Cfg.Align = v; });
+            AddCombo(c2, "Выравнивание по вертикали",
+                new string[] { "Сверху", "По центру", "Снизу" },
+                new string[] { "top", "center", "bottom" },
+                delegate { return Cfg.VAlign; }, delegate(string v) { Cfg.VAlign = v; });
+            AddSlider(c2, "Расстояние между строками", -4, 16, 1, 1, 0, " px",
+                delegate { return Cfg.LineSpacing; }, delegate(int v) { Cfg.LineSpacing = v; });
+            AddToggle(c2, "Тень текста", delegate { return Cfg.TextShadow; },
+                delegate(bool v) { Cfg.TextShadow = v; });
+            AddToggle(c2, "Приглушать на паузе", delegate { return Cfg.DimPaused; },
+                delegate(bool v) { Cfg.DimPaused = v; });
+
+            AddToggle(c3, "Бегущая строка", delegate { return Cfg.Marquee; },
+                delegate(bool v) { Cfg.Marquee = v; });
+            AddSlider(c3, "Скорость", 10, 400, 5, 1, 0, " px/с",
+                delegate { return Cfg.MarqueeSpeed; }, delegate(int v) { Cfg.MarqueeSpeed = v; });
+            AddSlider(c3, "Промежуток", 0, 200, 5, 1, 0, " px",
+                delegate { return Cfg.MarqueeGap; }, delegate(int v) { Cfg.MarqueeGap = v; });
+            AddHint(c3, "Прокрутка длинных названий по кругу");
+        }
+
+        void BuildCover(List<Card> cards)
+        {
+            Card c1 = Card2("Обложка");
+            Card c2 = Card2("Полоса прогресса");
+            cards.Add(c1); cards.Add(c2);
+
+            AddCombo(c1, "Сторона обложки",
+                new string[] { "Справа", "Слева", "Скрыть" },
+                new string[] { "right", "left", "none" },
+                delegate { return Cfg.ThumbSide; }, delegate(string v) { Cfg.ThumbSide = v; });
+            AddSlider(c1, "Размер", 0, 96, 1, 1, 0, " px",
+                delegate { return Cfg.ThumbSize; }, delegate(int v) { Cfg.ThumbSize = v; });
+            AddSlider(c1, "Скругление", 0, 40, 1, 1, 0, " px",
+                delegate { return Cfg.ThumbCorner; }, delegate(int v) { Cfg.ThumbCorner = v; });
+            AddToggle(c1, "Заглушка без обложки", delegate { return Cfg.ThumbPlaceholder; },
+                delegate(bool v) { Cfg.ThumbPlaceholder = v; });
+
+            AddToggle(c2, "Показывать прогресс", delegate { return Cfg.Progress; },
+                delegate(bool v) { Cfg.Progress = v; });
+            AddColor(c2, "Цвет полосы", delegate { return Cfg.ProgressColor; },
+                delegate(string v) { Cfg.ProgressColor = v; });
+            AddSlider(c2, "Толщина полосы", 1, 8, 1, 1, 0, " px",
+                delegate { return Cfg.ProgressHeight; }, delegate(int v) { Cfg.ProgressHeight = v; });
+            AddSlider(c2, "Яркость полосы", 0, 255, 1, 1, 0, "",
+                delegate { return Cfg.ProgressAlpha; }, delegate(int v) { Cfg.ProgressAlpha = v; });
+            AddSlider(c2, "Сдвиг от края", -80, 40, 1, 1, 0, " px",
+                delegate { return Cfg.ProgressOffset; }, delegate(int v) { Cfg.ProgressOffset = v; });
+        }
+
+        void BuildBehavior(List<Card> cards)
+        {
+            Card c1 = Card2("Видимость");
+            Card c2 = Card2("Действия мышью");
+            cards.Add(c1); cards.Add(c2);
+
+            AddToggle(c1, "Показывать на паузе", delegate { return Cfg.ShowPaused; },
+                delegate(bool v) { Cfg.ShowPaused = v; });
+            AddToggle(c1, "Скрывать без музыки", delegate { return Cfg.HideWhenIdle; },
+                delegate(bool v) { Cfg.HideWhenIdle = v; });
+            AddToggle(c1, "Всегда поверх панели задач", delegate { return Cfg.AlwaysVisible; },
+                delegate(bool v) { Cfg.AlwaysVisible = v; });
+            AddToggle(c1, "Скрывать в полноэкранных играх", delegate { return Cfg.HideFullscreen; },
+                delegate(bool v) { Cfg.HideFullscreen = v; });
+
+            bool autostart = false;
+            try { autostart = Autostart.Enabled; } catch { }
+            AddToggle(c1, "Запускать с Windows", delegate { return autostart; },
+                delegate(bool v) { autostart = v; try { Autostart.Enabled = v; } catch { } });
+
+            AddCombo(c2, "Один клик",
+                new string[] { "Настройки", "Пауза / играть", "Следующий трек", "Предыдущий", "Ничего" },
+                new string[] { "settings", "toggle", "next", "prev", "none" },
+                delegate { return Cfg.SingleClick; }, delegate(string v) { Cfg.SingleClick = v; });
+            AddCombo(c2, "Двойной клик",
+                new string[] { "Пауза / играть", "Настройки", "Ничего" },
+                new string[] { "toggle", "settings", "none" },
+                delegate { return Cfg.DoubleClick; }, delegate(string v) { Cfg.DoubleClick = v; });
+            AddHint(c2, "Все изменения применяются сразу — окно можно не закрывать");
+        }
+
+        // ================= строки карточки =================
+
+        Card Card2(string title) { return new Card(title); }
+
+        void AddRow(Card card, string label, Control ctl, Control right)
+        {
+            TableLayoutPanel b = card.Body;
+            int row = b.RowCount;
+            b.RowCount = row + 1;
+            b.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+
+            Label l = new Label();
+            l.Text = label;
+            l.Dock = DockStyle.Fill;
+            l.TextAlign = ContentAlignment.MiddleLeft;
+            l.ForeColor = Theme.Sub;
+            l.BackColor = Color.FromArgb(30, 30, 35);
+            l.Font = Theme.F(9f, false);
+            l.Margin = new Padding(0, 0, 12, 0);
+            b.Controls.Add(l, 0, row);
+
+            ctl.Dock = DockStyle.Fill;
+            ctl.Margin = new Padding(0, 8, 12, 6);
+            ctl.BackColor = Color.FromArgb(30, 30, 35);
+            b.Controls.Add(ctl, 1, row);
+
+            if (right != null)
+            {
+                right.Dock = DockStyle.Fill;
+                right.Margin = new Padding(0, 0, 0, 0);
+                b.Controls.Add(right, 2, row);
+            }
+        }
+
+        void AddSlider(Card card, string label, int min, int max, int step, int div,
+                       int decimals, string suffix,
+                       Func<int> get, Action<int> set)
+        {
+            Slider s = new Slider();
+            s.Min = min; s.Max = max; s.Step = step; s.Divider = div;
+            s.Decimals = decimals; s.Suffix = suffix;
+            s.RawValue = Math.Max(min, Math.Min(max, get()));
+            s.BackColor = Color.FromArgb(30, 30, 35);
+
+            Label v = new Label();
+            v.Text = s.DisplayValue();
+            v.TextAlign = ContentAlignment.MiddleRight;
+            v.ForeColor = Theme.Text;
+            v.Font = Theme.F(8.5f, false);
+            v.BackColor = Color.FromArgb(30, 30, 35);
+
+            s.ValueChanged += delegate
+            {
+                set(s.RawValue);
+                v.Text = s.DisplayValue();
+                if (!building) Raise();
             };
-            tbFont.TextChanged += (s, e) => Raise();
-            AddRow(t, "Название шрифта", tbFont);
-            AddHint(t, "Например: Segoe UI, Tahoma, Verdana, Arial, Calibri, Candara, Georgia, Consolas.");
 
-            AddSection(t, "Название трека");
-            nTitleSize = Num(5, 30, 0.25m, 1); AddRow(t, "Размер шрифта", nTitleSize);
-            cTitleBold = Chk("Жирный"); AddRow(t, "Начертание", cTitleBold);
-            bTitleCol = ColorBtn(); AddRow(t, "Цвет", bTitleCol);
-
-            AddSection(t, "Вторая строка");
-            cbSecond = Combo(
-                new[] { "Исполнитель", "Альбом", "Приложение", "Исполнитель · Приложение", "Приложение · Исполнитель", "Не показывать" },
-                new[] { "artist", "album", "app", "artist_app", "app_artist", "none" }, false);
-            AddRow(t, "Содержимое", cbSecond);
-            nArtistSize = Num(4, 24, 0.25m, 1); AddRow(t, "Размер шрифта", nArtistSize);
-            cArtistBold = Chk("Жирный"); AddRow(t, "Начертание", cArtistBold);
-            bArtistCol = ColorBtn(); AddRow(t, "Цвет", bArtistCol);
-
-            AddSection(t, "Расположение");
-            cbAlign = Combo(new[] { "По левому краю", "По центру", "По правому краю" },
-                new[] { "left", "center", "right" }, false);
-            AddRow(t, "Выравнивание по горизонтали", cbAlign);
-            cbVAlign = Combo(new[] { "По верхнему краю", "По центру", "По нижнему краю" },
-                new[] { "top", "center", "bottom" }, false);
-            AddRow(t, "Выравнивание по вертикали", cbVAlign);
-            nLineSpacing = Num(-4, 16, 1, 0); AddRow(t, "Интервал между строками, px", nLineSpacing);
-            cTextShadow = Chk("Тень под текстом (для прозрачного фона)"); AddRow(t, "Тень", cTextShadow);
-
-            AddSection(t, "Бегущая строка");
-            cMarquee = Chk("Прокручивать длинные названия"); AddRow(t, "Бегущая строка", cMarquee);
-            nMarqueeSpeed = Num(10, 400, 5, 0); AddRow(t, "Скорость, px/сек", nMarqueeSpeed);
-            nMarqueeGap = Num(0, 200, 5, 0); AddRow(t, "Промежуток между повторами, px", nMarqueeGap);
-            AddHint(t, "Бегущая строка работает при выравнивании по левому краю.");
-
-            cDimPaused = Chk("Приглушать текст и обложку на паузе"); AddRow(t, "Пауза", cDimPaused);
+            AddRow(card, label, s, v);
         }
 
-        void BuildThumbTab()
+        void AddToggle(Card card, string label, Func<bool> get, Action<bool> set)
         {
-            var p = NewPage("Обложка");
-            var t = NewGrid(p);
-
-            AddSection(t, "Обложка");
-            cbThumbSide = Combo(new[] { "Слева от текста", "Справа от текста", "Не показывать" },
-                new[] { "left", "right", "none" }, false);
-            AddRow(t, "Положение", cbThumbSide);
-            nThumbSize = Num(0, 96, 1, 0); AddRow(t, "Размер, px (0 = авто)", nThumbSize);
-            nThumbCorner = Num(0, 40, 1, 0); AddRow(t, "Скругление, px", nThumbCorner);
-            cThumbPlaceholder = Chk("Показывать заглушку, если обложки нет"); AddRow(t, "Заглушка", cThumbPlaceholder);
-            AddHint(t, "Обложку отдают Spotify, Яндекс Музыка, браузеры (Chrome, Edge, Firefox) и большинство плееров. " +
-                        "Некоторые приложения публикуют её с задержкой в 1–3 секунды — виджет подхватит автоматически.");
-
-            AddSection(t, "Полоса прогресса");
-            cProgress = Chk("Показывать прогресс воспроизведения"); AddRow(t, "Прогресс", cProgress);
-            bProgressCol = ColorBtn(); AddRow(t, "Цвет полосы", bProgressCol);
-            nProgressHeight = Num(1, 8, 1, 0); AddRow(t, "Толщина, px", nProgressHeight);
-            nProgressAlpha = Num(0, 255, 5, 0); AddRow(t, "Яркость (0–255)", nProgressAlpha);
-            nProgressOffset = Num(-80, 40, 1, 0); AddRow(t, "Сдвиг вверх от низа, px", nProgressOffset);
-            AddHint(t, "Отрицательное значение опускает полосу ниже, положительное — поднимает её выше.");
+            ToggleSwitch t = new ToggleSwitch();
+            t.SetSilent(get());
+            t.BackColor = Color.FromArgb(30, 30, 35);
+            t.CheckedChanged += delegate
+            {
+                set(t.Checked);
+                if (!building) Raise();
+            };
+            AddRow(card, label, t, null);
         }
 
-        void BuildBehaviorTab()
+        void AddColor(Card card, string label, Func<string> get, Action<string> set)
         {
-            var p = NewPage("Поведение");
-            var t = NewGrid(p);
-
-            AddSection(t, "Видимость");
-            cShowPaused = Chk("Показывать трек на паузе"); AddRow(t, "На паузе", cShowPaused);
-            cHideIdle = Chk("Скрывать, когда ничего не играет"); AddRow(t, "Без трека", cHideIdle);
-            cAlways = Chk("Всегда показывать виджет"); AddRow(t, "Всегда", cAlways);
-            cHideFull = Chk("Скрывать в полноэкранных приложениях и играх"); AddRow(t, "Полный экран", cHideFull);
-
-            AddSection(t, "Мышь");
-            cbSingleClick = Combo(
-                new[] { "Открыть настройки", "Пауза / воспроизведение", "Следующий трек", "Предыдущий трек", "Ничего" },
-                new[] { "settings", "toggle", "next", "prev", "none" }, false);
-            AddRow(t, "Одиночный клик", cbSingleClick);
-            cbDoubleClick = Combo(
-                new[] { "Пауза / воспроизведение", "Открыть настройки", "Следующий трек", "Предыдущий трек", "Ничего" },
-                new[] { "toggle", "settings", "next", "prev", "none" }, false);
-            AddRow(t, "Двойной клик", cbDoubleClick);
-            AddHint(t, "Колесо мыши: вверх — следующий трек, вниз — предыдущий. Правый клик — меню.");
-
-            AddSection(t, "Прочее");
-            cAutostart = Chk("Запускать при входе в Windows"); AddRow(t, "Автозапуск", cAutostart);
-            AddHint(t, "Изменения применяются сразу и видны на панели задач. Кнопка «Готово» просто закрывает окно.");
+            ColorSwatch c = new ColorSwatch();
+            c.SetSilent(Config.ParseColor(get(), Color.White));
+            c.BackColor = Color.FromArgb(30, 30, 35);
+            c.ValueChanged += delegate
+            {
+                set(Config.ColorToString(c.Value));
+                if (!building) Raise();
+            };
+            AddRow(card, label, c, null);
         }
 
-        // ================= синхронизация =================
-
-        static void SetColorBtn(Button b, Color c)
+        void AddCombo(Card card, string label, string[] names, string[] values,
+                      Func<string> get, Action<string> set)
         {
-            b.BackColor = c;
-            b.ForeColor = c.GetBrightness() > 0.55f ? Color.Black : Color.White;
-            b.Text = string.Format("#{0:X2}{1:X2}{2:X2}", c.R, c.G, c.B);
+            FlatCombo c = new FlatCombo();
+            c.Fill(names);
+            c.SelectedIndex = Math.Max(0, Array.IndexOf(values, get()));
+            c.BackColor = Color.FromArgb(30, 30, 35);
+            c.SelectedIndexChanged += delegate
+            {
+                int i = c.SelectedIndex;
+                if (i >= 0 && i < values.Length) set(values[i]);
+                if (!building) Raise();
+            };
+            AddRow(card, label, c, null);
         }
 
-        static void SetCombo(ComboBox c, string value)
+        void AddFontCombo(Card card, string label, Func<string> get, Action<string> set)
         {
-            var vals = (string[])c.Tag;
-            for (int i = 0; i < vals.Length; i++)
-                if (vals[i] == value) { c.SelectedIndex = i; return; }
-            if (c.Items.Count > 0) c.SelectedIndex = 0;
+            FlatCombo c = new FlatCombo();
+            c.PreviewsOwnFont = true;
+            List<string> names = FontList.Get();
+            c.Items.AddRange(names);
+            int i = names.IndexOf(get());
+            if (i < 0) i = names.IndexOf("Segoe UI");
+            c.SelectedIndex = i < 0 ? 0 : i;
+            c.BackColor = Color.FromArgb(30, 30, 35);
+            c.SelectedIndexChanged += delegate
+            {
+                if (c.SelectedIndex >= 0) set(c.Items[c.SelectedIndex]);
+                if (!building) Raise();
+            };
+            AddRow(card, label, c, null);
         }
 
-        static string ComboValue(ComboBox c)
+        void AddHint(Card card, string text)
         {
-            var vals = (string[])c.Tag;
-            int i = c.SelectedIndex;
-            if (i < 0 || i >= vals.Length) return vals.Length > 0 ? vals[0] : "";
-            return vals[i];
+            TableLayoutPanel b = card.Body;
+            int row = b.RowCount;
+            b.RowCount = row + 1;
+            b.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+
+            Label l = new Label();
+            l.Text = text;
+            l.Dock = DockStyle.Fill;
+            l.TextAlign = ContentAlignment.MiddleLeft;
+            l.ForeColor = Color.FromArgb(105, 105, 116);
+            l.BackColor = Color.FromArgb(30, 30, 35);
+            l.Font = Theme.F(8f, false);
+            l.Margin = new Padding(0, 0, 12, 0);
+            b.Controls.Add(l, 0, row);
+            b.SetColumnSpan(l, 3);
         }
 
-        static decimal ClampD(decimal v, NumericUpDown n)
-        {
-            if (v < n.Minimum) return n.Minimum;
-            if (v > n.Maximum) return n.Maximum;
-            return v;
-        }
-
-        void LoadFromConfig()
-        {
-            loading = true;
-            nWidth.Value = ClampD(Cfg.Width, nWidth);
-            nHeight.Value = ClampD(Cfg.Height, nHeight);
-            nRightMargin.Value = ClampD(Cfg.RightMargin, nRightMargin);
-            nVertOffset.Value = ClampD(Cfg.VertOffset, nVertOffset);
-            nCorner.Value = ClampD(Cfg.Corner, nCorner);
-            nPadding.Value = ClampD(Cfg.Padding, nPadding);
-
-            cBgEnabled.Checked = Cfg.BgEnabled;
-            SetCombo(cbBgMode, Cfg.BgMode);
-            nCoverBlur.Value = ClampD(Cfg.CoverBlur, nCoverBlur);
-            nCoverDark.Value = ClampD(Cfg.CoverDark, nCoverDark);
-            nCoverSat.Value = ClampD(Cfg.CoverSaturation, nCoverSat);
-            SetColorBtn(bBg, Color.FromArgb(Cfg.BgR, Cfg.BgG, Cfg.BgB));
-            nOpacity.Value = ClampD(Cfg.OpacityPercent, nOpacity);
-            cGradient.Checked = Cfg.Gradient;
-            SetColorBtn(bBg2, Color.FromArgb(Cfg.BgR2, Cfg.BgG2, Cfg.BgB2));
-            nGradAngle.Value = ClampD(Cfg.GradientAngle, nGradAngle);
-
-            cBorderEnabled.Checked = Cfg.BorderEnabled;
-            SetColorBtn(bBorderCol, Color.FromArgb(Cfg.BorderR, Cfg.BorderG, Cfg.BorderB));
-            nBorderWidth.Value = ClampD(Cfg.BorderWidth, nBorderWidth);
-            nBorderAlpha.Value = ClampD(Cfg.BorderAlpha, nBorderAlpha);
-
-            tbFont.Text = Cfg.FontName;
-            nTitleSize.Value = ClampD((decimal)Cfg.TitleSize, nTitleSize);
-            cTitleBold.Checked = Cfg.TitleBold;
-            SetColorBtn(bTitleCol, Config.ParseColor(Cfg.TitleColor, Color.White));
-            nArtistSize.Value = ClampD((decimal)Cfg.ArtistSize, nArtistSize);
-            cArtistBold.Checked = Cfg.ArtistBold;
-            SetColorBtn(bArtistCol, Config.ParseColor(Cfg.ArtistColor, Color.FromArgb(168, 168, 172)));
-            SetCombo(cbAlign, Cfg.Align);
-            SetCombo(cbVAlign, Cfg.VAlign);
-            SetCombo(cbSecond, Cfg.SecondLine);
-            nLineSpacing.Value = ClampD(Cfg.LineSpacing, nLineSpacing);
-            cTextShadow.Checked = Cfg.TextShadow;
-            cMarquee.Checked = Cfg.Marquee;
-            nMarqueeSpeed.Value = ClampD(Cfg.MarqueeSpeed, nMarqueeSpeed);
-            nMarqueeGap.Value = ClampD(Cfg.MarqueeGap, nMarqueeGap);
-            cDimPaused.Checked = Cfg.DimPaused;
-
-            SetCombo(cbThumbSide, Cfg.ThumbSide);
-            nThumbSize.Value = ClampD(Cfg.ThumbSize, nThumbSize);
-            nThumbCorner.Value = ClampD(Cfg.ThumbCorner, nThumbCorner);
-            cThumbPlaceholder.Checked = Cfg.ThumbPlaceholder;
-            cProgress.Checked = Cfg.Progress;
-            SetColorBtn(bProgressCol, Config.ParseColor(Cfg.ProgressColor, Color.White));
-            nProgressHeight.Value = ClampD(Cfg.ProgressHeight, nProgressHeight);
-            nProgressAlpha.Value = ClampD(Cfg.ProgressAlpha, nProgressAlpha);
-            nProgressOffset.Value = ClampD(Cfg.ProgressOffset, nProgressOffset);
-
-            cShowPaused.Checked = Cfg.ShowPaused;
-            cHideIdle.Checked = Cfg.HideWhenIdle;
-            cAlways.Checked = Cfg.AlwaysVisible;
-            cHideFull.Checked = Cfg.HideFullscreen;
-            SetCombo(cbSingleClick, Cfg.SingleClick);
-            SetCombo(cbDoubleClick, Cfg.DoubleClick);
-            cAutostart.Checked = Autostart.Enabled;
-            loading = false;
-
-            preview.Cfg = Cfg;
-            preview.Invalidate();
-        }
-
-        void Gather()
-        {
-            Cfg.Width = (int)nWidth.Value;
-            Cfg.Height = (int)nHeight.Value;
-            Cfg.RightMargin = (int)nRightMargin.Value;
-            Cfg.VertOffset = (int)nVertOffset.Value;
-            Cfg.Corner = (int)nCorner.Value;
-            Cfg.Padding = (int)nPadding.Value;
-
-            Cfg.BgEnabled = cBgEnabled.Checked;
-            Cfg.BgMode = ComboValue(cbBgMode);
-            Cfg.CoverBlur = (int)nCoverBlur.Value;
-            Cfg.CoverDark = (int)nCoverDark.Value;
-            Cfg.CoverSaturation = (int)nCoverSat.Value;
-            Cfg.BgR = bBg.BackColor.R; Cfg.BgG = bBg.BackColor.G; Cfg.BgB = bBg.BackColor.B;
-            Cfg.OpacityPercent = (int)nOpacity.Value;
-            Cfg.Gradient = cGradient.Checked;
-            Cfg.BgR2 = bBg2.BackColor.R; Cfg.BgG2 = bBg2.BackColor.G; Cfg.BgB2 = bBg2.BackColor.B;
-            Cfg.GradientAngle = (int)nGradAngle.Value;
-
-            Cfg.BorderEnabled = cBorderEnabled.Checked;
-            Cfg.BorderR = bBorderCol.BackColor.R; Cfg.BorderG = bBorderCol.BackColor.G; Cfg.BorderB = bBorderCol.BackColor.B;
-            Cfg.BorderWidth = (int)nBorderWidth.Value;
-            Cfg.BorderAlpha = (int)nBorderAlpha.Value;
-
-            string f = tbFont.Text.Trim();
-            Cfg.FontName = f.Length > 0 ? f : "Segoe UI";
-            Cfg.TitleSize = (float)nTitleSize.Value;
-            Cfg.TitleBold = cTitleBold.Checked;
-            Cfg.TitleColor = Config.ColorToString(bTitleCol.BackColor);
-            Cfg.ArtistSize = (float)nArtistSize.Value;
-            Cfg.ArtistBold = cArtistBold.Checked;
-            Cfg.ArtistColor = Config.ColorToString(bArtistCol.BackColor);
-            Cfg.Align = ComboValue(cbAlign);
-            Cfg.VAlign = ComboValue(cbVAlign);
-            Cfg.SecondLine = ComboValue(cbSecond);
-            Cfg.LineSpacing = (int)nLineSpacing.Value;
-            Cfg.TextShadow = cTextShadow.Checked;
-            Cfg.Marquee = cMarquee.Checked;
-            Cfg.MarqueeSpeed = (int)nMarqueeSpeed.Value;
-            Cfg.MarqueeGap = (int)nMarqueeGap.Value;
-            Cfg.DimPaused = cDimPaused.Checked;
-
-            Cfg.ThumbSide = ComboValue(cbThumbSide);
-            Cfg.ThumbSize = (int)nThumbSize.Value;
-            Cfg.ThumbCorner = (int)nThumbCorner.Value;
-            Cfg.ThumbPlaceholder = cThumbPlaceholder.Checked;
-            Cfg.Progress = cProgress.Checked;
-            Cfg.ProgressColor = Config.ColorToString(bProgressCol.BackColor);
-            Cfg.ProgressHeight = (int)nProgressHeight.Value;
-            Cfg.ProgressAlpha = (int)nProgressAlpha.Value;
-            Cfg.ProgressOffset = (int)nProgressOffset.Value;
-
-            Cfg.ShowPaused = cShowPaused.Checked;
-            Cfg.HideWhenIdle = cHideIdle.Checked;
-            Cfg.AlwaysVisible = cAlways.Checked;
-            Cfg.HideFullscreen = cHideFull.Checked;
-            Cfg.SingleClick = ComboValue(cbSingleClick);
-            Cfg.DoubleClick = ComboValue(cbDoubleClick);
-
-            bool wantAuto = cAutostart.Checked;
-            if (wantAuto != Autostart.Enabled) Autostart.Enabled = wantAuto;
-        }
+        // ================= общее =================
 
         void Raise()
         {
-            if (loading) return;
-            Gather();
             preview.Cfg = Cfg;
             preview.Invalidate();
             if (LiveChanged != null) LiveChanged();
@@ -738,6 +667,65 @@ namespace NowPlaying
         {
             Track = t; Thumb = thumb;
             preview.Track = t; preview.Thumb = thumb;
+            preview.Invalidate();
+        }
+
+        void DumpLayout()
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine("FORM client=" + ClientSize.Width + "x" + ClientSize.Height);
+            DumpCtrl(sb, this, 0);
+            try
+            {
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(Application.StartupPath, "layout.txt"), sb.ToString());
+            }
+            catch { }
+        }
+
+        void DumpCtrl(System.Text.StringBuilder sb, Control parent, int depth)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                string extra = "";
+                if (c is Label) extra = " text=\"" + ((Label)c).Text + "\"";
+                else if (c is Slider) extra = " val=" + ((Slider)c).DisplayValue();
+                else if (c is ToggleSwitch) extra = " checked=" + ((ToggleSwitch)c).Checked;
+                else if (c is FlatCombo) extra = " sel=\"" + ((FlatCombo)c).SelectedText + "\"";
+                sb.AppendLine(new string(' ', depth * 2) + c.GetType().Name +
+                    " b=" + c.Left + "," + c.Top + "," + c.Width + "x" + c.Height +
+                    " dock=" + c.Dock + extra);
+                if (c.Controls.Count > 0) DumpCtrl(sb, c, depth + 1);
+            }
+        }
+    }
+
+    static class FontList
+    {
+        static List<string> cache;
+
+        public static List<string> Get()
+        {
+            if (cache != null) return cache;
+            List<string> list = new List<string>();
+            try
+            {
+                using (InstalledFontCollection col = new InstalledFontCollection())
+                {
+                    foreach (FontFamily f in col.Families)
+                    {
+                        string n = f.Name;
+                        if (n.Length == 0) continue;
+                        if (n.StartsWith("@")) continue;
+                        list.Add(n);
+                    }
+                }
+            }
+            catch { }
+            list.Sort(StringComparer.CurrentCultureIgnoreCase);
+            if (!list.Contains("Segoe UI")) list.Insert(0, "Segoe UI");
+            cache = list;
+            return cache;
         }
     }
 }
