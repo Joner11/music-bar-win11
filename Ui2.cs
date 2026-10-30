@@ -114,9 +114,17 @@ namespace NowPlaying
         void ShowDrop()
         {
             if (Items.Count == 0) return;
+
+            int rowH = 30;
+            int popW = Math.Max(Width, PreviewsOwnFont ? 300 : 210);
+            int maxRows = 12;
+            int rows = Math.Min(Items.Count, maxRows);
+            int popH = rows * rowH + 8;
+
             ToolStripDropDown pop = new ToolStripDropDown();
-            pop.Padding = new Padding(4);
-            pop.BackColor = Theme.CardHi;
+            pop.AutoSize = false;
+            pop.Padding = new Padding(1);
+            pop.BackColor = Color.FromArgb(56, 56, 66);
             pop.DropShadowEnabled = true;
 
             ListBox lb = new ListBox();
@@ -125,35 +133,54 @@ namespace NowPlaying
             lb.ForeColor = Theme.Text;
             lb.Font = Theme.F(9f, false);
             lb.DrawMode = DrawMode.OwnerDrawFixed;
-            lb.ItemHeight = 26;
+            lb.ItemHeight = rowH;
             lb.IntegralHeight = false;
+            lb.AutoSize = false;
+            lb.Size = new Size(popW - 2, popH - 2);
+            lb.HorizontalScrollbar = false;
             for (int i = 0; i < Items.Count; i++) lb.Items.Add(Items[i]);
-            if (index >= 0) lb.SelectedIndex = index;
+            if (index >= 0 && index < lb.Items.Count) lb.SelectedIndex = index;
+
+            int hot = index;
 
             lb.DrawItem += delegate(object s, DrawItemEventArgs de)
             {
                 if (de.Index < 0) return;
-                bool sel = (de.State & DrawItemState.Selected) != 0;
-                using (var b = new SolidBrush(sel ? Color.FromArgb(50, 50, 58) : Theme.CardHi))
+                bool sel = de.Index == index;
+                bool hov = de.Index == hot;
+                using (var b = new SolidBrush(hov ? Color.FromArgb(52, 52, 62) : Theme.CardHi))
                     de.Graphics.FillRectangle(b, de.Bounds);
+                de.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
                 string it = (string)lb.Items[de.Index];
-                Font baseF = lb.Font;
+                Font baseF = Theme.F(9f, false);
                 Font use = baseF;
                 if (PreviewsOwnFont)
                 {
-                    try { use = new Font(it, 9f); } catch { use = baseF; }
+                    try { use = new Font(it, 9.5f); } catch { use = baseF; }
                 }
-                StringFormat sf = new StringFormat();
-                sf.LineAlignment = StringAlignment.Center;
-                using (var br = new SolidBrush(sel ? Theme.Accent : Theme.Text))
-                    de.Graphics.DrawString(it, use, br,
-                        new RectangleF(de.Bounds.X + 8, de.Bounds.Y, de.Bounds.Width - 10, de.Bounds.Height), sf);
-                sf.Dispose();
+
+                Rectangle tr = new Rectangle(de.Bounds.X + 10, de.Bounds.Y,
+                    de.Bounds.Width - (sel ? 34 : 16), de.Bounds.Height);
+                Draw.Text(de.Graphics, it, use, sel || hov ? Theme.Text : Color.FromArgb(214, 214, 222),
+                    tr, StringAlignment.Near, StringAlignment.Center);
+                if (sel)
+                    Draw.Check(de.Graphics, new Rectangle(de.Bounds.Right - 24, de.Bounds.Y + 9, 12, 11),
+                        Theme.Accent);
                 if (use != baseF) use.Dispose();
+                baseF.Dispose();
             };
+
+            lb.MouseMove += delegate(object s, MouseEventArgs me)
+            {
+                int i = lb.IndexFromPoint(me.Location);
+                if (i != hot) { hot = i; lb.Invalidate(); }
+            };
+            lb.MouseLeave += delegate { hot = -1; lb.Invalidate(); };
             lb.MouseClick += delegate(object s, MouseEventArgs me)
             {
-                if (lb.SelectedIndex >= 0) { SelectedIndex = lb.SelectedIndex; pop.Close(); }
+                int i = lb.IndexFromPoint(me.Location);
+                if (i >= 0) { SelectedIndex = i; pop.Close(); }
             };
             lb.KeyDown += delegate(object s, KeyEventArgs ke)
             {
@@ -161,14 +188,64 @@ namespace NowPlaying
                 else if (ke.KeyCode == Keys.Escape) pop.Close();
             };
 
-            int h = Math.Min(320, Items.Count * 26 + 10);
-            int w = Math.Max(Width, 180);
-            lb.Size = new Size(w - 8, h - 8);
-            pop.Items.Add(new ToolStripControlHost(lb));
-            pop.Size = new Size(w, h);
-            pop.Show(this, new Point(0, Height + 2));
+            ToolStripControlHost host = new ToolStripControlHost(lb);
+            host.AutoSize = false;
+            host.Margin = Padding.Empty;
+            host.Padding = Padding.Empty;
+            host.Size = lb.Size;
+            pop.Items.Add(host);
+            pop.Size = new Size(popW, popH);
+            pop.Show(this, new Point(0, Height + 3));
             lb.Focus();
         }
+    }
+
+    // =====================================================================
+    //  Пилюля-кнопка для готовых пресетов
+    // =====================================================================
+    class Chip : Control
+    {
+        public bool Active;
+        bool hover;
+
+        public Chip(string text)
+        {
+            Text = text;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Height = 28;
+            Cursor = Cursors.Hand;
+            BackColor = Theme.Card;
+        }
+
+        public void Fit() { Width = Measure(); }
+
+        int Measure()
+        {
+            using (var f = Theme.F(8.5f, false))
+                return TextRenderer.MeasureText(Text, f).Width + 24;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var b = new SolidBrush(Parent != null ? Parent.BackColor : Theme.Card))
+                g.FillRectangle(b, ClientRectangle);
+
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            Color fill = Active ? Color.FromArgb(38, Theme.Accent.R, Theme.Accent.G, Theme.Accent.B)
+                                : (hover ? Theme.CardHi : Theme.Field);
+            Draw.FillRound(g, r, 8, fill);
+            Draw.StrokeRound(g, r, 8, Active ? Color.FromArgb(120, Theme.Accent.R, Theme.Accent.G, Theme.Accent.B)
+                                             : Color.FromArgb(58, 58, 68));
+            using (var f = Theme.F(8.5f, Active))
+                Draw.Text(g, Text, f, Active ? Theme.Accent : Theme.Text, r,
+                    StringAlignment.Center, StringAlignment.Center);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover = true; Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hover = false; Invalidate(); }
     }
 
     // =====================================================================

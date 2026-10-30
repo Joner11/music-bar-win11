@@ -352,6 +352,22 @@ namespace NowPlaying
             Card c2 = Card2("Скругление и отступы");
             cards.Add(c1); cards.Add(c2);
 
+            AddChips(c1, "Пресет", new string[] { "Мини", "Компактно", "Стандарт", "Широко" },
+                delegate(int i)
+                {
+                    int[] w = { 140, 185, 240, 320 };
+                    int[] h = { 28, 40, 48, 48 };
+                    Cfg.Width = w[i]; Cfg.Height = h[i];
+                },
+                delegate
+                {
+                    if (Cfg.Width == 140 && Cfg.Height == 28) return 0;
+                    if (Cfg.Width == 185 && Cfg.Height == 40) return 1;
+                    if (Cfg.Width == 240 && Cfg.Height == 48) return 2;
+                    if (Cfg.Width == 320 && Cfg.Height == 48) return 3;
+                    return -1;
+                });
+
             AddSlider(c1, "Ширина виджета", 120, 700, 1, 1, 0, " px",
                 delegate { return Cfg.Width; }, delegate(int v) { Cfg.Width = v; });
             AddSlider(c1, "Высота виджета", 20, 120, 1, 1, 0, " px",
@@ -399,6 +415,38 @@ namespace NowPlaying
             AddSlider(c2, "Толщина рамки", 1, 6, 1, 1, 0, " px",
                 delegate { return Cfg.BorderWidth; }, delegate(int v) { Cfg.BorderWidth = v; });
 
+            AddChips(c3, "Готовый стиль", new string[] { "Тёмный", "Стекло", "Обложка", "Светлый" },
+                delegate(int i)
+                {
+                    Cfg.BgEnabled = true; Cfg.Gradient = true;
+                    if (i == 0)
+                    {
+                        Cfg.BgMode = "color"; Cfg.OpacityPercent = 82;
+                        Cfg.BgR = 28; Cfg.BgG = 28; Cfg.BgB = 30;
+                        Cfg.BgR2 = 21; Cfg.BgG2 = 21; Cfg.BgB2 = 21;
+                        Cfg.TextColorMode = "auto";
+                    }
+                    else if (i == 1)
+                    {
+                        Cfg.BgMode = "cover_blur_tint"; Cfg.OpacityPercent = 62;
+                        Cfg.CoverDark = 45; Cfg.CoverBlur = 24; Cfg.TextColorMode = "auto";
+                    }
+                    else if (i == 2)
+                    {
+                        Cfg.BgMode = "cover_blur"; Cfg.OpacityPercent = 100;
+                        Cfg.CoverDark = 22; Cfg.CoverBlur = 18; Cfg.TextColorMode = "auto";
+                    }
+                    else
+                    {
+                        Cfg.BgMode = "color"; Cfg.OpacityPercent = 96;
+                        Cfg.BgR = 242; Cfg.BgG = 242; Cfg.BgB = 246;
+                        Cfg.BgR2 = 224; Cfg.BgG2 = 226; Cfg.BgB2 = 232;
+                        Cfg.BorderR = 30; Cfg.BorderG = 30; Cfg.BorderB = 34;
+                        Cfg.TextColorMode = "auto";
+                    }
+                },
+                null);
+
             AddCombo(c3, "Режим фона",
                 new string[] { "Свой цвет", "Размытие обложки", "Размытие + оттенок", "Цвет обложки" },
                 new string[] { "color", "cover_blur", "cover_blur_tint", "cover_color" },
@@ -418,6 +466,20 @@ namespace NowPlaying
             Card c3 = Card2("Бегущая строка");
             cards.Add(c1); cards.Add(c2); cards.Add(c3);
 
+            AddChips(c1, "Размер текста", new string[] { "Мелкий", "Обычный", "Крупный" },
+                delegate(int i)
+                {
+                    if (i == 0) { Cfg.TitleSize = 8.5f; Cfg.ArtistSize = 7.25f; }
+                    else if (i == 1) { Cfg.TitleSize = 9.75f; Cfg.ArtistSize = 8.25f; }
+                    else { Cfg.TitleSize = 12f; Cfg.ArtistSize = 10f; }
+                },
+                delegate
+                {
+                    if (Cfg.TitleSize == 8.5f) return 0;
+                    if (Cfg.TitleSize == 9.75f) return 1;
+                    if (Cfg.TitleSize == 12f) return 2;
+                    return -1;
+                });
             AddFontCombo(c1, "Шрифт", delegate { return Cfg.FontName; },
                 delegate(string v) { Cfg.FontName = v; });
             AddSlider(c1, "Размер названия", 20, 120, 1, 4, 2, " pt",
@@ -432,9 +494,9 @@ namespace NowPlaying
                 delegate(bool v) { Cfg.ArtistBold = v; });
 
             AddCombo(c2, "Цвет текста",
-                new string[] { "Авто по фону", "Всегда светлый", "Всегда тёмный", "Свой цвет" },
-                new string[] { "auto", "light", "dark", "custom" },
-                delegate { return Cfg.TextColorMode; },
+                new string[] { "Адаптивный к фону", "Свой цвет" },
+                new string[] { "auto", "custom" },
+                delegate { return Cfg.TextColorMode == "custom" ? "custom" : "auto"; },
                 delegate(string v) { Cfg.TextColorMode = v; RebuildPage(); });
             if (Cfg.TextColorMode == "custom")
             {
@@ -442,9 +504,10 @@ namespace NowPlaying
                     delegate(string v) { Cfg.TitleColor = v; });
                 AddColor(c2, "Цвет исполнителя", delegate { return Cfg.ArtistColor; },
                     delegate(string v) { Cfg.ArtistColor = v; });
+                AddHint(c2, "Цвет полосы прогресса берётся отдельно, на странице «Обложка»");
             }
             else
-                AddHint(c2, "Оттенок подбирается сам: на тёмном фоне светлый текст и наоборот");
+                AddHint(c2, "Сам подбирает светлый или тёмный оттенок под текущий фон — всегда читаемо");
             AddCombo(c2, "Вторая строка",
                 new string[] { "Исполнитель", "Альбом", "Плеер", "Исполнитель · плеер", "Плеер · исполнитель", "Нет" },
                 new string[] { "artist", "album", "app", "artist_app", "app_artist", "none" },
@@ -658,6 +721,26 @@ namespace NowPlaying
                 if (!building) Raise();
             };
             AddRow(card, label, c, null);
+        }
+
+        void AddChips(Card card, string label, string[] names, Action<int> onClick, Func<int> active)
+        {
+            FlowLayoutPanel fl = new FlowLayoutPanel();
+            fl.Dock = DockStyle.Fill;
+            fl.WrapContents = false;
+            fl.AutoScroll = false;
+            fl.BackColor = Color.FromArgb(30, 30, 35);
+            for (int i = 0; i < names.Length; i++)
+            {
+                Chip ch = new Chip(names[i]);
+                ch.Fit();
+                ch.Margin = new Padding(0, 0, 6, 0);
+                ch.Active = active != null && active() == i;
+                int idx = i;
+                ch.Click += delegate { onClick(idx); RebuildPage(); };
+                fl.Controls.Add(ch);
+            }
+            AddRow(card, label, fl, null);
         }
 
         void AddHint(Card card, string text)
