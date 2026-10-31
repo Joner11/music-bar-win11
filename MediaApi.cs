@@ -24,6 +24,12 @@ namespace NowPlaying
         /// <summary>Данные взяты из кэша: плеер сейчас отдаёт пустые метаданные.</summary>
         public bool Stale;
 
+        /// <summary>Windows считает эту сессию текущей (GetCurrentSession).</summary>
+        public bool Current;
+
+        /// <summary>Когда сессия последний раз меняла состояние.</summary>
+        public DateTime LastUpdated;
+
         /// <summary>Позиция воспроизведения с учётом времени, прошедшего с последнего опроса.</summary>
         public double CurrentPosition
         {
@@ -227,6 +233,13 @@ namespace NowPlaying
                 try
                 {
                     var mgr = Manager();
+
+                    // «Текущая» сессия — та, которую Windows считает активной.
+                    // При нескольких играющих плеерах это единственный надёжный
+                    // ориентир: порядок GetSessions произвольный.
+                    object current = null;
+                    try { current = _mgrT.GetMethod("GetCurrentSession").Invoke(mgr, null); } catch { }
+
                     var sessions = (IEnumerable)_mgrT.GetMethod("GetSessions").Invoke(mgr, null);
                     if (sessions == null) return list;
                     // Общий бюджет на опрос: один зависший плеер не должен
@@ -241,6 +254,9 @@ namespace NowPlaying
                         var t = new TrackInfo();
                         t.Session = s;
                         try { t.App = (string)st.GetProperty("SourceAppUserModelId").GetValue(s, null) ?? ""; } catch { }
+                        try { t.Current = object.ReferenceEquals(s, current); } catch { }
+                        // LastUpdatedTime живёт в таймлайне, а не в самой сессии.
+                        t.LastUpdated = DateTime.MinValue;
                         try
                         {
                             var pi = st.GetMethod("GetPlaybackInfo").Invoke(s, null);
@@ -258,6 +274,12 @@ namespace NowPlaying
                             t.PositionSec = posT.TotalSeconds - startT.TotalSeconds;
                             t.DurationSec = endT.TotalSeconds - startT.TotalSeconds;
                             t.TimelineAt = DateTime.UtcNow;
+                            try
+                            {
+                                object lu = tlt.GetProperty("LastUpdatedTime").GetValue(tl, null);
+                                if (lu is DateTimeOffset) t.LastUpdated = ((DateTimeOffset)lu).UtcDateTime;
+                            }
+                            catch { }
                         }
                         catch { }
 

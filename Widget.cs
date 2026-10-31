@@ -366,7 +366,20 @@ namespace NowPlaying
 
         string _lastRenderedKey = "";
 
-        TrackInfo Pick(List<TrackInfo> list)
+        /// <summary>
+        /// Из двух кандидатов выбирает лучший: сессию, которую Windows считает
+        /// текущей, затем ту, что менялась позже. Порядок GetSessions произвольный,
+        /// поэтому «первая в списке» — не то же самое, что «та, что играет».
+        /// </summary>
+        static TrackInfo Better(TrackInfo a, TrackInfo b)
+        {
+            if (a == null) return b;
+            if (b == null) return a;
+            if (a.Current != b.Current) return b.Current ? b : a;
+            return b.LastUpdated > a.LastUpdated ? b : a;
+        }
+
+        internal TrackInfo Pick(List<TrackInfo> list)
         {
             // Приоритет: играющий трек С МЕТАДАННЫМИ → играющий без них →
             // пауза с метаданными → последняя известная сессия.
@@ -381,17 +394,17 @@ namespace NowPlaying
 
                 if (t.IsPlaying)
                 {
-                    if (t.HasText && !t.Stale) { if (playing == null) playing = t; }
-                    else if (t.HasText) { if (playingStale == null) playingStale = t; }
-                    else { if (playingEmpty == null) playingEmpty = t; }
+                    if (t.HasText && !t.Stale) playing = Better(playing, t);
+                    else if (t.HasText) playingStale = Better(playingStale, t);
+                    else playingEmpty = Better(playingEmpty, t);
                 }
                 else if (t.Status == 5)
                 {
-                    if (t.HasText) { if (paused == null) paused = t; }
-                    else if (pausedEmpty == null) pausedEmpty = t;
+                    if (t.HasText) paused = Better(paused, t);
+                    else pausedEmpty = Better(pausedEmpty, t);
                 }
 
-                if (t.HasText && firstAny == null) firstAny = t;
+                if (t.HasText) firstAny = Better(firstAny, t);
             }
 
             TrackInfo result = null;

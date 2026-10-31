@@ -26,6 +26,7 @@ namespace NowPlaying
         static bool _valid;
 
         static long _activeStamp = -1;
+        static double _activeExpect = -1;
         static bool _activeOk;
         static string _activeTitle = "", _activeArtist = "", _activeAlbum = "";
         static double _activeDur;
@@ -63,7 +64,7 @@ namespace NowPlaying
             var ci = new FileInfo(cfgPath);
             var li = new FileInfo(listPath);
             long stamp = ci.LastWriteTimeUtc.Ticks ^ (li.LastWriteTimeUtc.Ticks << 1) ^ (li.Length << 3);
-            if (stamp == _activeStamp)
+            if (stamp == _activeStamp && _activeExpect == _expectedDur)
             {
                 if (!_activeOk) return false;
                 title = _activeTitle; artist = _activeArtist;
@@ -71,6 +72,7 @@ namespace NowPlaying
                 return true;
             }
             _activeStamp = stamp;
+            _activeExpect = _expectedDur;
 
             // activeTrackId=141067975:37441641
             string id = "";
@@ -116,6 +118,16 @@ namespace NowPlaying
                         if (n.Length > 0) names.Add(n);
                     }
                 artist = string.Join(", ", names.ToArray());
+
+                // config.ini обновляется чуть позже, чем SMTC-таймлайн, поэтому
+                // в момент переключения трека там ещё может лежать предыдущий.
+                // Сверяем длительность: она у разных треков почти всегда разная.
+                if (_expectedDur > 5 && durSec > 5 && Math.Abs(durSec - _expectedDur) > 1.5)
+                {
+                    _activeOk = false;
+                    return false;
+                }
+
                 _activeOk = true; _activeTitle = title; _activeArtist = artist;
                 _activeAlbum = album; _activeDur = durSec;
                 return true;
