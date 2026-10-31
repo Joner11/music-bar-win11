@@ -10,7 +10,7 @@
 
 #define AppName        "Music Bar Win11"
 #define AppShortName   "MusicBarWin11"
-#define AppVersion     "1.4.3"
+#define AppVersion     "1.4.4"
 #define AppPublisher   "Music Bar Win11"
 #define AppExe         "MusicBarWin11.exe"
 #define AppId          "{{8F3C1A52-7D64-4E19-9B2A-5C6E7A4D1F03}"
@@ -81,6 +81,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "README.en.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

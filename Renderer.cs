@@ -56,6 +56,9 @@ namespace NowPlaying
         /// <summary>Индекс кнопки под курсором (-1 = нет) — для подсветки.</summary>
         public static int HoverIndex = -1;
 
+        /// <summary>Доля полосы под курсором (0..1) или -1, если курсора на ней нет.</summary>
+        public static float SeekFrac = -1f;
+
         public static int NavWidth(Config cfg, float scale)
         {
             var kinds = NavKinds(cfg);
@@ -428,11 +431,7 @@ namespace NowPlaying
                 if (frac < 0) frac = 0;
                 if (frac > 1) frac = 1;
                 int ph = Math.Max(1, (int)Math.Round(cfg.ProgressHeight * scale));
-                int inset = (int)Math.Round(cfg.Padding * scale);
-                if (inset < 2) inset = 2;
-                int rIns = Math.Max(inset, radius / 2 + 1);   // не залезать на скругление
-                int off = (int)Math.Round(cfg.ProgressOffset * scale);
-                var trackRect = new RectangleF(bounds.X + rIns, bounds.Bottom - inset - ph - off, bounds.Width - rIns * 2, ph);
+                var trackRect = ProgressRect(cfg, bounds, scale);
                 var fillRect = new RectangleF(trackRect.X, trackRect.Y, (float)(trackRect.Width * frac), ph);
                 var pc = Config.ParseColor(cfg.ProgressColor, Color.White);
                 int pa = cfg.ProgressAlpha;
@@ -453,7 +452,44 @@ namespace NowPlaying
                         else g.FillRectangle(br, fillRect);
                     }
                 }
+
+                // Наведение на полосу: показываем, куда попадёт перемотка —
+                // лёгкая досветка от текущей позиции до курсора и точка на конце.
+                if (SeekFrac >= 0 && cfg.SeekOnClick)
+                {
+                    float mx = trackRect.X + trackRect.Width * SeekFrac;
+                    float curX = trackRect.X + trackRect.Width * (float)frac;
+                    float x1 = Math.Min(curX, mx), x2 = Math.Max(curX, mx);
+                    if (x2 - x1 > 0.5f)
+                    {
+                        using (var br = new SolidBrush(Color.FromArgb(Math.Min(255, pa + 40), pc.R, pc.G, pc.B)))
+                        {
+                            var pv = new RectangleF(x1, trackRect.Y, x2 - x1, ph);
+                            if (cfg.ProgressRounded) g.FillPath(br, RoundRect(pv, ph / 2));
+                            else g.FillRectangle(br, pv);
+                        }
+                    }
+                    float rad = Math.Max(3.5f, 4.0f * scale);
+                    using (var br = new SolidBrush(Color.FromArgb(255, pc.R, pc.G, pc.B)))
+                        g.FillEllipse(br, mx - rad, trackRect.Y + ph / 2f - rad, rad * 2, rad * 2);
+                }
             }
+        }
+
+        /// <summary>
+        /// Прямоугольник полосы прогресса. Отрисовка и попадание мыши обязаны
+        /// считать его одинаково, иначе клик уходит мимо полосы.
+        /// </summary>
+        public static RectangleF ProgressRect(Config cfg, Rectangle bounds, float scale)
+        {
+            int ph = Math.Max(1, (int)Math.Round(cfg.ProgressHeight * scale));
+            int inset = (int)Math.Round(cfg.Padding * scale);
+            if (inset < 2) inset = 2;
+            int radius = (int)Math.Round(cfg.Corner * scale);
+            int rIns = Math.Max(inset, radius / 2 + 1);   // не залезать на скругление
+            int off = (int)Math.Round(cfg.ProgressOffset * scale);
+            return new RectangleF(bounds.X + rIns, bounds.Bottom - inset - ph - off,
+                                  bounds.Width - rIns * 2, ph);
         }
 
         static void DrawNavGlyph(Graphics g, Rectangle r, int kind, Color c, bool playing)

@@ -17,3 +17,8 @@ error.log
 !tools/*.ps1
 smtc.txt
 tb.txt
+
+# логи сборки и установщика
+inst.log
+inst_setup.log
+shots.log

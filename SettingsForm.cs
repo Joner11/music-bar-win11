@@ -587,6 +587,11 @@ namespace NowPlaying
                 delegate { return Cfg.ProgressOffset; }, delegate(int v) { Cfg.ProgressOffset = v; });
             AddToggle(c2, "Скруглённые концы", delegate { return Cfg.ProgressRounded; },
                 delegate(bool v) { Cfg.ProgressRounded = v; });
+            AddToggle(c2, "Перемотка по клику", delegate { return Cfg.SeekOnClick; },
+                delegate(bool v) { Cfg.SeekOnClick = v; });
+            if (Cfg.Progress)
+                AddHint(c2, "Клик по полосе прогресса перематывает трек. Работает не во всех " +
+                            "плеерах — если плеер не поддерживает перемотку, ничего не произойдёт.");
         }
 
         void BuildButtons(List<Card> cards)

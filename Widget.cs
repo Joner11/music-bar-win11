@@ -680,11 +680,45 @@ namespace NowPlaying
             return -1;
         }
 
+        /// <summary>Доля полосы прогресса под точкой (0..1) или -1, если мимо.</summary>
+        float SeekFracAt(Point p)
+        {
+            if (!Cfg.Progress || !Cfg.SeekOnClick) return -1f;
+            TrackInfo t;
+            lock (sync) { t = track; }
+            if (t == null || t.DurationSec <= 0) return -1f;
+
+            int w = (int)Math.Round(Cfg.DrawWidth * dpiScale);
+            int h = (int)Math.Round(Cfg.DrawHeight * dpiScale);
+            var trackRect = Renderer.ProgressRect(Cfg, new Rectangle(0, 0, w, h), dpiScale);
+
+            // Полоса тонкая — попадать в неё мышью неудобно. Расширяем зону
+            // чувствительности вверх, но только до полосы, не на всё окно.
+            float pad = Math.Max(4f, 5f * dpiScale);
+            var hit = new RectangleF(trackRect.X, trackRect.Y - pad,
+                                     trackRect.Width, trackRect.Height + pad * 2);
+            if (!hit.Contains(p)) return -1f;
+
+            float f = (p.X - trackRect.X) / trackRect.Width;
+            if (f < 0) f = 0;
+            if (f > 1) f = 1;
+            return f;
+        }
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
             int hit = NavHit(e.Location);
-            bool over = hit >= 0;
+
+            // Подсказка на полосе прогресса: точка и курсор-рука.
+            float sf = hit >= 0 ? -1f : SeekFracAt(e.Location);
+            if (Math.Abs(sf - Renderer.SeekFrac) > 0.0005f)
+            {
+                Renderer.SeekFrac = sf;
+                needRender = true;
+            }
+
+            bool over = hit >= 0 || sf >= 0;
             Cursor = over ? Cursors.Hand : Cursors.Default;
             // подсветка под курсором
             int idx = -1;
@@ -700,6 +734,15 @@ namespace NowPlaying
             }
         }
 
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            bool dirty = false;
+            if (Renderer.SeekFrac >= 0) { Renderer.SeekFrac = -1f; dirty = true; }
+            if (Renderer.HoverIndex >= 0) { Renderer.HoverIndex = -1; dirty = true; }
+            if (dirty) needRender = true;
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
@@ -710,6 +753,39 @@ namespace NowPlaying
                 DoAction(nav == 0 ? "prev" : (nav == 1 ? "toggle" : "next"));
                 MarkHandled();
                 return;
+            }
+
+            // Клик по полосе прогресса — перемотка. Обрабатываем сразу и гасим
+            // одиночный клик, иначе вместе с перемоткой откроются настройки.
+            if (e.Button == MouseButtons.Left)
+            {
+                float sf = SeekFracAt(e.Location);
+                if (sf >= 0)
+                {
+                    _clickTimer.Stop();
+                    TrackInfo t;
+                    lock (sync) { t = track; }
+                    if (t != null)
+                    {
+                        double dur = t.DurationSec;
+                        bool ok = MediaApi.Seek(t.Session, sf, dur);
+                        if (ok)
+                        {
+                            // Сразу двигаем полосу, не ждём следующего опроса.
+                            lock (sync)
+                            {
+                                if (track != null)
+                                {
+                                    track.PositionSec = dur * sf;
+                                    track.TimelineAt = DateTime.UtcNow;
+                                }
+                            }
+                            needRender = true;
+                        }
+                        MarkHandled();
+                    }
+                    return;
+                }
             }
             if (e.Button == MouseButtons.Left)
             {

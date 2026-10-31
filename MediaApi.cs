@@ -379,6 +379,29 @@ namespace NowPlaying
             catch { }
         }
 
+        /// <summary>
+        /// Перемотка на долю трека (0..1). SMTC принимает позицию в тиках.
+        /// Статус выполнения возвращается честно: не все плееры это умеют.
+        /// </summary>
+        public static bool Seek(object session, double frac, double durationSec)
+        {
+            try
+            {
+                if (session == null || durationSec <= 0) return false;
+                if (frac < 0) frac = 0;
+                if (frac > 1) frac = 1;
+                long ticks = (long)(durationSec * 10000000.0 * frac);
+                if (ticks < 0) ticks = 0;
+                var m = session.GetType().GetMethod("TryChangePlaybackPositionAsync");
+                if (m == null) return false;
+                object op = m.Invoke(session, new object[] { ticks });
+                if (op == null) return false;
+                object res = Await(op, typeof(bool), 2500);
+                return res is bool && (bool)res;
+            }
+            catch { return false; }
+        }
+
         public static void Skip(object session, bool next)
         {
             try

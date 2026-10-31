@@ -87,6 +87,7 @@ namespace NowPlaying
         public int ProgressAlpha = 120;
         public int ProgressOffset = -1;       // сдвиг полосы вверх от нижнего края, px
         public bool ProgressRounded = true;   // скруглённые концы полосы
+        public bool SeekOnClick = true;       // клик по полосе перематывает трек
         public bool ThumbShadow = false;      // мягкая тень под обложкой
         public bool ThumbCircle = false;      // обложка кругом
         public bool ThumbBorder = false;      // тонкая рамка вокруг обложки
@@ -163,6 +164,7 @@ namespace NowPlaying
             ProgressHeight = o.ProgressHeight; ProgressAlpha = o.ProgressAlpha;
             ProgressOffset = o.ProgressOffset;
             ProgressRounded = o.ProgressRounded; ThumbShadow = o.ThumbShadow;
+            SeekOnClick = o.SeekOnClick;
 
             BgMode = o.BgMode; CoverBlur = o.CoverBlur;
             CoverDark = o.CoverDark; CoverSaturation = o.CoverSaturation;
@@ -301,6 +303,7 @@ namespace NowPlaying
                         case "outlinewidth": if (int.TryParse(v, out iv)) c.OutlineWidth = Clamp(iv, 1, 4); break;
                         case "shadowstrength": if (int.TryParse(v, out iv)) c.ShadowStrength = Clamp(iv, 0, 255); break;
                         case "progressrounded": if (bool.TryParse(v, out bv)) c.ProgressRounded = bv; break;
+                        case "seekonclick": if (bool.TryParse(v, out bv)) c.SeekOnClick = bv; break;
                         case "thumbshadow": if (bool.TryParse(v, out bv)) c.ThumbShadow = bv; break;
                         case "thumboffset": if (int.TryParse(v, out iv)) c.ThumbOffset = Clamp(iv, -60, 60); break;
                         case "thumbvalign": if (v == "top" || v == "center" || v == "bottom") c.ThumbVAlign = v; break;
@@ -419,6 +422,7 @@ namespace NowPlaying
                 sb.AppendLine("shadowStrength=" + ShadowStrength);
                 sb.AppendLine("textOpacity=" + TextOpacity);
                 sb.AppendLine("progressRounded=" + ProgressRounded);
+                sb.AppendLine("seekOnClick=" + SeekOnClick);
                 sb.AppendLine("thumbShadow=" + ThumbShadow);
                 sb.AppendLine("lineSpacing=" + LineSpacing);
                 sb.AppendLine("valign=" + VAlign);
