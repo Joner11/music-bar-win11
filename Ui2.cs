@@ -115,88 +115,188 @@ namespace NowPlaying
         {
             if (Items.Count == 0) return;
 
+            DropList dl = new DropList();
+            dl.Items = new List<string>(Items);
+            dl.PreviewsOwnFont = PreviewsOwnFont;
+            dl.Selected = index;
+            dl.BackColor = Theme.CardHi;
+
+            int popW = Math.Max(Width, PreviewsOwnFont ? 320 : 210);
             int rowH = 30;
-            int popW = Math.Max(Width, PreviewsOwnFont ? 300 : 210);
-            int maxRows = 12;
-            int rows = Math.Min(Items.Count, maxRows);
+            int rows = Math.Min(Items.Count, 11);
             int popH = rows * rowH + 8;
+            dl.Size = new Size(popW - 2, popH - 2);
 
             ToolStripDropDown pop = new ToolStripDropDown();
             pop.AutoSize = false;
             pop.Padding = new Padding(1);
-            pop.BackColor = Color.FromArgb(56, 56, 66);
+            pop.BackColor = Color.FromArgb(58, 58, 69);
             pop.DropShadowEnabled = true;
 
-            ListBox lb = new ListBox();
-            lb.BorderStyle = BorderStyle.None;
-            lb.BackColor = Theme.CardHi;
-            lb.ForeColor = Theme.Text;
-            lb.Font = Theme.F(9f, false);
-            lb.DrawMode = DrawMode.OwnerDrawFixed;
-            lb.ItemHeight = rowH;
-            lb.IntegralHeight = false;
-            lb.AutoSize = false;
-            lb.Size = new Size(popW - 2, popH - 2);
-            lb.HorizontalScrollbar = false;
-            for (int i = 0; i < Items.Count; i++) lb.Items.Add(Items[i]);
-            if (index >= 0 && index < lb.Items.Count) lb.SelectedIndex = index;
-
-            int hot = index;
-
-            lb.DrawItem += delegate(object s, DrawItemEventArgs de)
+            ScrollHost.WheelBlock++;
+            ToolStripDropDown popRef = pop;
+            ToolStripDropDownClosedEventHandler onClosed = null;
+            onClosed = delegate
             {
-                if (de.Index < 0) return;
-                bool sel = de.Index == index;
-                bool hov = de.Index == hot;
-                using (var b = new SolidBrush(hov ? Color.FromArgb(52, 52, 62) : Theme.CardHi))
-                    de.Graphics.FillRectangle(b, de.Bounds);
-                de.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                ScrollHost.WheelBlock = Math.Max(0, ScrollHost.WheelBlock - 1);
+                popRef.Closed -= onClosed;
+            };
+            pop.Closed += onClosed;
 
-                string it = (string)lb.Items[de.Index];
+            dl.ItemPicked += delegate(int i) { SelectedIndex = i; pop.Close(); };
+            dl.Cancelled += delegate { pop.Close(); };
+
+            ToolStripControlHost host = new ToolStripControlHost(dl);
+            host.AutoSize = false;
+            host.Margin = Padding.Empty;
+            host.Padding = Padding.Empty;
+            host.Size = dl.Size;
+            pop.Items.Add(host);
+            pop.Size = new Size(popW, popH);
+            pop.Show(this, new Point(0, Height + 3));
+            dl.Focus();
+            dl.ScrollToSelected();
+        }
+    }
+
+    // =====================================================================
+    //  Список внутри выпадающего окна — свой рендер, без нативного ListBox
+    // =====================================================================
+    class DropList : Control
+    {
+        public List<string> Items = new List<string>();
+        public bool PreviewsOwnFont;
+        public int Selected = -1;
+
+        public event Action<int> ItemPicked;
+        public event Action Cancelled;
+
+        int scroll;
+        int hot = -1;
+        const int RowH = 30;
+
+        public DropList()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+            Cursor = Cursors.Hand;
+            TabStop = true;
+        }
+
+        int MaxScroll { get { return Math.Max(0, Items.Count * RowH - Height); } }
+
+        public void ScrollToSelected()
+        {
+            if (Selected < 0) return;
+            int y = Selected * RowH;
+            if (y < scroll) scroll = y;
+            if (y + RowH > scroll + Height) scroll = y + RowH - Height;
+            Clamp();
+        }
+
+        void Clamp()
+        {
+            if (scroll > MaxScroll) scroll = MaxScroll;
+            if (scroll < 0) scroll = 0;
+            Invalidate();
+        }
+
+        void ScrollBy(int dy) { scroll += dy; Clamp(); }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            int i = (e.Y + scroll) / RowH;
+            if (i >= Items.Count) i = -1;
+            if (i != hot) { hot = i; Invalidate(); }
+        }
+
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hot = -1; Invalidate(); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            Focus();
+            if (e.Button != MouseButtons.Left) return;
+            int i = (e.Y + scroll) / RowH;
+            if (i >= 0 && i < Items.Count && ItemPicked != null) ItemPicked(i);
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            ScrollBy(-(e.Delta / 120) * RowH * 2);
+        }
+
+        protected override bool IsInputKey(Keys k)
+        {
+            if (k == Keys.Up || k == Keys.Down || k == Keys.Enter || k == Keys.Escape) return true;
+            return base.IsInputKey(k);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Escape) { if (Cancelled != null) Cancelled(); return; }
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (Selected >= 0 && ItemPicked != null) ItemPicked(Selected);
+                return;
+            }
+            if (e.KeyCode == Keys.Down && Selected < Items.Count - 1) Selected++;
+            else if (e.KeyCode == Keys.Up && Selected > 0) Selected--;
+            else if (e.KeyCode == Keys.PageDown) ScrollBy(Height);
+            else if (e.KeyCode == Keys.PageUp) ScrollBy(-Height);
+            else if (e.KeyCode == Keys.Home) { Selected = 0; scroll = 0; }
+            else if (e.KeyCode == Keys.End) { Selected = Items.Count - 1; scroll = MaxScroll; }
+            ScrollToSelected();
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Theme.CardHi);
+
+            int first = scroll / RowH;
+            int last = Math.Min(Items.Count - 1, (scroll + Height) / RowH + 1);
+
+            for (int i = first; i <= last; i++)
+            {
+                int y = i * RowH - scroll;
+                var row = new Rectangle(0, y, Width, RowH);
+                bool sel = i == Selected;
+                bool hov = i == hot;
+
+                if (hov)
+                    using (var b = new SolidBrush(Color.FromArgb(52, 52, 62)))
+                        g.FillRectangle(b, row);
+
+                string it = Items[i];
                 Font baseF = Theme.F(9f, false);
                 Font use = baseF;
                 if (PreviewsOwnFont)
                 {
                     try { use = new Font(it, 9.5f); } catch { use = baseF; }
                 }
-
-                Rectangle tr = new Rectangle(de.Bounds.X + 10, de.Bounds.Y,
-                    de.Bounds.Width - (sel ? 34 : 16), de.Bounds.Height);
-                Draw.Text(de.Graphics, it, use, sel || hov ? Theme.Text : Color.FromArgb(214, 214, 222),
+                var tr = new Rectangle(row.X + 12, row.Y, row.Width - (sel ? 40 : 20), row.Height);
+                Draw.Text(g, it, use,
+                    hov ? Theme.Text : (sel ? Theme.Accent : Color.FromArgb(212, 212, 222)),
                     tr, StringAlignment.Near, StringAlignment.Center);
                 if (sel)
-                    Draw.Check(de.Graphics, new Rectangle(de.Bounds.Right - 24, de.Bounds.Y + 9, 12, 11),
-                        Theme.Accent);
+                    Draw.Check(g, new Rectangle(row.Right - 26, row.Y + 10, 12, 11), Theme.Accent);
                 if (use != baseF) use.Dispose();
                 baseF.Dispose();
-            };
+            }
 
-            lb.MouseMove += delegate(object s, MouseEventArgs me)
+            // тонкий ползунок, только если нужно
+            if (MaxScroll > 0)
             {
-                int i = lb.IndexFromPoint(me.Location);
-                if (i != hot) { hot = i; lb.Invalidate(); }
-            };
-            lb.MouseLeave += delegate { hot = -1; lb.Invalidate(); };
-            lb.MouseClick += delegate(object s, MouseEventArgs me)
-            {
-                int i = lb.IndexFromPoint(me.Location);
-                if (i >= 0) { SelectedIndex = i; pop.Close(); }
-            };
-            lb.KeyDown += delegate(object s, KeyEventArgs ke)
-            {
-                if (ke.KeyCode == Keys.Enter) { SelectedIndex = lb.SelectedIndex; pop.Close(); }
-                else if (ke.KeyCode == Keys.Escape) pop.Close();
-            };
-
-            ToolStripControlHost host = new ToolStripControlHost(lb);
-            host.AutoSize = false;
-            host.Margin = Padding.Empty;
-            host.Padding = Padding.Empty;
-            host.Size = lb.Size;
-            pop.Items.Add(host);
-            pop.Size = new Size(popW, popH);
-            pop.Show(this, new Point(0, Height + 3));
-            lb.Focus();
+                int need = Math.Max(28, (int)((double)Height * Height / (Items.Count * RowH)));
+                int y = (int)((double)scroll / MaxScroll * (Height - need));
+                Draw.FillRound(g, new Rectangle(Width - 5, y, 3, need), 1, Color.FromArgb(90, 90, 102));
+            }
         }
     }
 
@@ -406,8 +506,12 @@ namespace NowPlaying
             Invalidate();
         }
 
+        /// <summary>Пока открыт выпадающий список, хост не должен крутить страницу.</summary>
+        public static int WheelBlock;
+
         public bool PreFilterMessage(ref Message m)
         {
+            if (m.Msg == 0x020A && WheelBlock > 0) return false;
             if (m.Msg == 0x020A && Visible && IsHandleCreated)
             {
                 Point cp = PointToClient(Cursor.Position);

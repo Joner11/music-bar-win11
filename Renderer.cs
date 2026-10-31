@@ -12,8 +12,8 @@ namespace NowPlaying
     {
         public static Bitmap Render(Config cfg, TrackInfo t, Image thumb, float scrollPx, float scale)
         {
-            int w = Math.Max(1, (int)Math.Round(cfg.Width * scale));
-            int h = Math.Max(1, (int)Math.Round(cfg.Height * scale));
+            int w = Math.Max(1, (int)Math.Round(cfg.DrawWidth * scale));
+            int h = Math.Max(1, (int)Math.Round(cfg.DrawHeight * scale));
             var bmp = new Bitmap(w, h, PixelFormat.Format32bppPArgb);
             using (var g = Graphics.FromImage(bmp))
             {
@@ -27,8 +27,39 @@ namespace NowPlaying
             return bmp;
         }
 
+        /// <summary>Ширина блока кнопок управления (0, если он выключен).</summary>
+        public static int NavWidth(Config cfg, float scale)
+        {
+            if (!cfg.NavButtons) return 0;
+            int size = Math.Max(6, (int)Math.Round(cfg.NavSize * scale));
+            int gap = (int)Math.Round(cfg.NavGap * scale);
+            return size * 3 + gap * 2 + gap;
+        }
+
+        /// <summary>Прямоугольники трёх кнопок — для отрисовки и для попадания мыши.</summary>
+        public static Rectangle[] NavRects(Config cfg, Rectangle bounds, float scale)
+        {
+            return NavRects(cfg, bounds, scale, 0);
+        }
+
+        /// <summary>rightInset — сколько места справа занято обложкой.</summary>
+        public static Rectangle[] NavRects(Config cfg, Rectangle bounds, float scale, int rightInset)
+        {
+            if (!cfg.NavButtons) return new Rectangle[0];
+            int size = Math.Max(6, (int)Math.Round(cfg.NavSize * scale));
+            int gap = (int)Math.Round(cfg.NavGap * scale);
+            int pad = (int)Math.Round(cfg.Padding * scale);
+            int total = size * 3 + gap * 2;
+            int x0 = bounds.Right - pad - rightInset - total;
+            int y = bounds.Y + (bounds.Height - size) / 2;
+            var r = new Rectangle[3];
+            for (int i = 0; i < 3; i++) r[i] = new Rectangle(x0 + i * (size + gap), y, size, size);
+            return r;
+        }
+
         public static void Draw(Graphics g, Rectangle bounds, Config cfg, TrackInfo t, Image thumb, float scrollPx, float scale)
         {
+            int navInset = 0;
             int radius = (int)Math.Round(cfg.Corner * scale);
             var body = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
 
@@ -136,18 +167,33 @@ namespace NowPlaying
                 else if (cfg.ThumbVAlign == "bottom") ty = bounds.Y + pad + Math.Max(0, availH - size);
                 else ty = bounds.Y + (bounds.Height - size) / 2;
                 ty += (int)Math.Round(cfg.ThumbOffset * scale);
-                int tx = cfg.ThumbSide == "right" ? bounds.Right - pad - size : bounds.X + pad;
+                int navW = NavWidth(cfg, scale);
+                navInset = 0;                       // кнопки всегда у правого края
+                int tx = cfg.ThumbSide == "right"
+                    ? bounds.Right - pad - navW - size
+                    : bounds.X + pad;
                 var tr2 = new Rectangle(tx, ty, size, size);
+                if (cfg.ThumbShadow && size > 8)
+                {
+                    for (int i = 3; i >= 1; i--)
+                    {
+                        var sr = new Rectangle(tr2.X - i, tr2.Y + i, tr2.Width + i * 2, tr2.Height);
+                        using (var br = new SolidBrush(Color.FromArgb(18, 0, 0, 0)))
+                            g.FillPath(br, RoundRect(sr, (int)Math.Round(cfg.ThumbCorner * scale) + i));
+                    }
+                }
                 if (thumb != null)
                     DrawThumb(g, thumb, tr2, (int)Math.Round(cfg.ThumbCorner * scale));
                 else
                     DrawPlaceholder(g, tr2, (int)Math.Round(cfg.ThumbCorner * scale), scale);
-                thumbSide = size + (int)Math.Round(6 * scale);
+                thumbSide = size + (int)Math.Round(cfg.TextGap * scale);
             }
 
             // ---- текст ----
             string title = t == null ? "" : (t.Title.Length > 0 ? t.Title : "Без названия");
             string second = t == null ? "" : t.SecondText(cfg);
+            if (cfg.TextCase == "upper") { title = title.ToUpperInvariant(); second = second.ToUpperInvariant(); }
+            else if (cfg.TextCase == "lower") { title = title.ToLowerInvariant(); second = second.ToLowerInvariant(); }
             if (t != null && !t.IsPlaying && !cfg.DimPaused) { /* без затемнения */ }
 
             int textX, textW;
@@ -166,23 +212,13 @@ namespace NowPlaying
                 textX = bounds.X + pad;
                 textW = bounds.Width - pad * 2;
             }
+            textW -= NavWidth(cfg, scale);
             if (textW < 8) return;
 
             Color titleCol = Config.ParseColor(cfg.TitleColor, Color.White);
             Color secondCol = Config.ParseColor(cfg.ArtistColor, Color.FromArgb(168, 168, 172));
-            bool darkText = false;
-            if (cfg.TextColorMode == "auto")
-            {
-                darkText = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
-            }
-            else if (cfg.TextColorMode == "light")
-            {
-                darkText = false;
-            }
-            else if (cfg.TextColorMode == "dark")
-            {
-                darkText = true;
-            }
+            bool darkBg = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
+            bool darkText = darkBg;
             if (cfg.TextColorMode != "custom")
             {
                 if (darkText)
@@ -207,6 +243,8 @@ namespace NowPlaying
             using (var brT = new SolidBrush(titleCol))
             using (var brS = new SolidBrush(secondCol))
             {
+                bool fakeT = cfg.TitleBold && NeedsFakeBold(cfg.FontName, cfg.TitleSize);
+                bool fakeS = cfg.ArtistBold && NeedsFakeBold(cfg.FontName, cfg.ArtistSize);
                 bool twoLines = second.Length > 0 && cfg.SecondLine != "none";
                 float hT = fT.GetHeight(g);
                 float hS = fS.GetHeight(g);
@@ -232,6 +270,19 @@ namespace NowPlaying
                 var oldClip = g.Clip;
                 g.SetClip(new RectangleF(textX, bounds.Y, textW, bounds.Height), CombineMode.Intersect);
 
+                if (cfg.TextOutline && cfg.OutlineWidth > 0)
+                {
+                    Color oc = darkText ? Color.FromArgb(150, 255, 255, 255) : Color.FromArgb(150, 0, 0, 0);
+                    using (var op = new Pen(oc, cfg.OutlineWidth * scale))
+                    using (var path = new GraphicsPath())
+                    {
+                        path.AddString(title, fT.FontFamily,
+                            (int)(cfg.TitleBold ? FontStyle.Bold : FontStyle.Regular),
+                            fT.Size, new PointF(textX, top - hT * 0.08f), sf);
+                        g.DrawPath(op, path);
+                    }
+                }
+
                 var rT = new RectangleF(textX, top - hT * 0.08f, textW, hT * 1.15f);
                 bool overflow = titleW > textW - 1;
 
@@ -240,17 +291,17 @@ namespace NowPlaying
                     float gap = cfg.MarqueeGap * scale;
                     var r1 = new RectangleF(textX - scrollPx, rT.Y, titleW + 2, rT.Height);
                     var r2 = new RectangleF(textX - scrollPx + titleW + gap, rT.Y, titleW + 2, rT.Height);
-                    if (cfg.TextShadow) { DrawShadow(g, title, fT, r1, sf, scale); DrawShadow(g, title, fT, r2, sf, scale); }
-                    g.DrawString(title, fT, brT, r1, sf);
-                    g.DrawString(title, fT, brT, r2, sf);
+                    if (cfg.TextShadow) { DrawShadow(g, title, fT, r1, sf, scale, cfg.ShadowStrength); DrawShadow(g, title, fT, r2, sf, scale, cfg.ShadowStrength); }
+                    DrawStr(g, title, fT, brT, r1, sf, scale, fakeT);
+                    DrawStr(g, title, fT, brT, r2, sf, scale, fakeT);
                 }
                 else
                 {
                     var sf2 = (StringFormat)sf.Clone();
                     sf2.Trimming = StringTrimming.EllipsisCharacter;
                     if (overflow) sf2.FormatFlags &= ~StringFormatFlags.NoClip;
-                    if (cfg.TextShadow) DrawShadow(g, title, fT, rT, sf2, scale);
-                    g.DrawString(title, fT, brT, rT, sf2);
+                    if (cfg.TextShadow) DrawShadow(g, title, fT, rT, sf2, scale, cfg.ShadowStrength);
+                    DrawStr(g, title, fT, brT, rT, sf2, scale, fakeT);
                     sf2.Dispose();
                 }
 
@@ -259,13 +310,31 @@ namespace NowPlaying
                     var rS = new RectangleF(textX, top + hT * 0.92f + spacing, textW, hS * 1.15f);
                     var sf3 = (StringFormat)sf.Clone();
                     sf3.Trimming = StringTrimming.EllipsisCharacter;
-                    if (cfg.TextShadow) DrawShadow(g, second, fS, rS, sf3, scale);
-                    g.DrawString(second, fS, brS, rS, sf3);
+                    if (cfg.TextShadow) DrawShadow(g, second, fS, rS, sf3, scale, cfg.ShadowStrength);
+                    DrawStr(g, second, fS, brS, rS, sf3, scale, fakeS);
                     sf3.Dispose();
                 }
 
                 g.Clip = oldClip;
                 sf.Dispose();
+            }
+
+            if (cfg.NavButtons)
+            {
+                Color nc = Color.FromArgb(210, 210, 218);
+                bool lightBg2 = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
+                if (lightBg2) nc = Color.FromArgb(70, 70, 82);
+                if (t != null && !t.IsPlaying && cfg.DimPaused) nc = Color.FromArgb(130, nc);
+                bool playing = t == null || t.IsPlaying;
+
+                var rects = NavRects(cfg, bounds, scale, navInset);
+                for (int i = 0; i < rects.Length; i++)
+                {
+                    var r = rects[i];
+                    using (var b = new SolidBrush(Color.FromArgb(26, 0, 0, 0)))
+                        g.FillPath(b, RoundRect(new RectangleF(r.X, r.Y, r.Width, r.Height), r.Width / 4));
+                    DrawNavGlyph(g, r, i, nc, playing);
+                }
             }
 
             if (cfg.Progress && t != null && t.DurationSec > 0)
@@ -283,21 +352,73 @@ namespace NowPlaying
                 var pc = Config.ParseColor(cfg.ProgressColor, Color.White);
                 int pa = cfg.ProgressAlpha;
                 if (t != null && !t.IsPlaying && cfg.DimPaused) pa = pa * 6 / 10;
-                bool lightBg = (cfg.TextColorMode == "dark") ||
-                    (cfg.TextColorMode == "auto" && Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f);
+                bool lightBg = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
                 using (var br = new SolidBrush(lightBg ? Color.FromArgb(40, 0, 0, 0)
                                                        : Color.FromArgb(60, 255, 255, 255)))
-                    g.FillRectangle(br, trackRect);
+                {
+                    if (cfg.ProgressRounded) g.FillPath(br, RoundRect(trackRect, ph / 2));
+                    else g.FillRectangle(br, trackRect);
+                }
                 if (lightBg) pc = Color.FromArgb(40, 40, 46);
-                using (var br = new SolidBrush(Color.FromArgb(pa, pc.R, pc.G, pc.B)))
-                    g.FillRectangle(br, fillRect);
+                if (fillRect.Width > 0.5f)
+                {
+                    using (var br = new SolidBrush(Color.FromArgb(pa, pc.R, pc.G, pc.B)))
+                    {
+                        if (cfg.ProgressRounded) g.FillPath(br, RoundRect(fillRect, ph / 2));
+                        else g.FillRectangle(br, fillRect);
+                    }
+                }
             }
         }
 
-        static void DrawShadow(Graphics g, string text, Font f, RectangleF r, StringFormat sf, float scale)
+        static void DrawNavGlyph(Graphics g, Rectangle r, int kind, Color c, bool playing)
+        {
+            float cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f;
+            float u = r.Width / 3f;
+
+            if (kind == 1)
+            {
+                if (playing)
+                {
+                    // пауза — две вертикальные черты
+                    float bw = Math.Max(1.2f, u * 0.34f);
+                    float bh = u * 1.15f;
+                    using (var b = new SolidBrush(c))
+                    {
+                        g.FillRectangle(b, cx - bw - u * 0.10f, cy - bh / 2, bw, bh);
+                        g.FillRectangle(b, cx + u * 0.10f, cy - bh / 2, bw, bh);
+                    }
+                }
+                else
+                {
+                    // play — треугольник
+                    using (var b = new SolidBrush(c))
+                        g.FillPolygon(b, new PointF[] {
+                            new PointF(cx - u * 0.42f, cy - u * 0.62f),
+                            new PointF(cx - u * 0.42f, cy + u * 0.62f),
+                            new PointF(cx + u * 0.58f, cy) });
+                }
+                return;
+            }
+
+            bool next = kind == 2;
+            float dir = next ? 1f : -1f;
+            using (var b = new SolidBrush(c))
+            {
+                g.FillPolygon(b, new PointF[] {
+                    new PointF(cx - dir * u * 0.52f, cy - u * 0.62f),
+                    new PointF(cx - dir * u * 0.52f, cy + u * 0.62f),
+                    new PointF(cx + dir * u * 0.46f, cy) });
+                float bw = Math.Max(1.2f, u * 0.20f);
+                g.FillRectangle(b, cx + dir * u * 0.52f - (next ? 0 : bw), cy - u * 0.62f, bw, u * 1.24f);
+            }
+        }
+
+        static void DrawShadow(Graphics g, string text, Font f, RectangleF r, StringFormat sf, float scale, int strength)
         {
             float off = Math.Max(1f, 1f * scale);
-            using (var br = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+            int sa = strength;
+            using (var br = new SolidBrush(Color.FromArgb(sa, 0, 0, 0)))
             {
                 var rr = new RectangleF(r.X + off, r.Y + off, r.Width, r.Height);
                 g.DrawString(text, f, br, rr, sf);
@@ -364,16 +485,63 @@ namespace NowPlaying
 
         static Font SafeFont(string name, float size, FontStyle style)
         {
+            Font f = null;
+            try { f = new Font(name, size, style); }
+            catch { f = null; }
+
+            if (f != null) return f;
+
+            try { return new Font("Segoe UI", size, style); }
+            catch { return new Font(SystemFonts.DefaultFont.FontFamily, size, style); }
+        }
+
+        /// <summary>
+        /// Видна ли жирность на глаз. У некоторых семейств (Bahnschrift SemiBold и т.п.)
+        /// «Bold» почти не отличается от Regular — тогда дорисовываем её сами.
+        /// </summary>
+        static readonly System.Collections.Generic.Dictionary<string, bool> fakeBoldCache =
+            new System.Collections.Generic.Dictionary<string, bool>();
+
+        static bool NeedsFakeBold(string family, float size)
+        {
+            string key = family + "|" + size.ToString("F2");
+            bool cached;
+            if (fakeBoldCache.TryGetValue(key, out cached)) return cached;
+            bool res = ComputeFakeBold(family, size);
+            if (fakeBoldCache.Count > 64) fakeBoldCache.Clear();
+            fakeBoldCache[key] = res;
+            return res;
+        }
+
+        static bool ComputeFakeBold(string family, float size)
+        {
             try
             {
-                var f = new Font(name, size, style);
-                if (f.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || f.Name.Length > 0) return f;
-                return f;
+                using (var fam = new FontFamily(family))
+                {
+                    if (!fam.IsStyleAvailable(FontStyle.Bold)) return true;
+                }
+                using (var g = Graphics.FromImage(new Bitmap(1, 1)))
+                using (var fr = new Font(family, size, FontStyle.Regular))
+                using (var fb = new Font(family, size, FontStyle.Bold))
+                {
+                    float wr = g.MeasureString("Жизнь Wm", fr).Width;
+                    float wb = g.MeasureString("Жизнь Wm", fb).Width;
+                    return wb < wr * 1.02f;
+                }
             }
-            catch
-            {
-                return new Font("Segoe UI", size, style);
-            }
+            catch { return true; }
+        }
+
+        /// <summary>Рисует строку, при необходимости дорисовывая «жирность» вручную.</summary>
+        static void DrawStr(Graphics g, string text, Font f, Brush br, RectangleF r, StringFormat sf,
+                            float scale, bool fake)
+        {
+            g.DrawString(text, f, br, r, sf);
+            if (!fake) return;
+            float dx = Math.Max(0.6f, 0.7f * scale);
+            var rr = new RectangleF(r.X + dx, r.Y, r.Width, r.Height);
+            g.DrawString(text, f, br, rr, sf);
         }
 
         /// <summary>Приблизительный цвет подложки под текстом — для авто-контраста.</summary>

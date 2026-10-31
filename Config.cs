@@ -15,6 +15,9 @@ namespace NowPlaying
         public int RightMargin = 6;
         public int VertOffset = 0;
         public int Corner = 5;
+        public bool AutoHeight = false;      // высота по содержимому
+        public bool MatchTaskbar = false;    // высота = высоте панели задач
+        public bool CompactNarrow = true;    // узкий экран — компактнее
         public int Padding = 4;
 
         // ---- фон ----
@@ -46,7 +49,15 @@ namespace NowPlaying
         public int MarqueeGap = 40;
         public bool DimPaused = false;
         public bool TextShadow = false;
-        public string TextColorMode = "auto";  // auto | light | dark | custom
+        public string TextColorMode = "auto";  // auto | custom
+        public bool NavButtons = false;       // кнопки «назад / пауза / вперёд»
+        public int NavSize = 15;              // размер кнопок, px
+        public int NavGap = 4;                // отступ между кнопками, px
+        public int TextGap = 6;               // отступ текста от обложки, px
+        public string TextCase = "normal";    // normal | upper | lower
+        public bool TextOutline = false;      // обводка текста контрастным цветом
+        public int OutlineWidth = 1;          // толщина обводки, px
+        public int ShadowStrength = 120;      // сила тени, 0..255
         public int LineSpacing = -2;           // дополнительный отступ между строками, px
         public string VAlign = "center";      // top | center | bottom
 
@@ -62,6 +73,8 @@ namespace NowPlaying
         public int ProgressHeight = 2;
         public int ProgressAlpha = 120;
         public int ProgressOffset = -1;       // сдвиг полосы вверх от нижнего края, px
+        public bool ProgressRounded = true;   // скруглённые концы полосы
+        public bool ThumbShadow = false;      // мягкая тень под обложкой
 
         // ---- фон из обложки ----
         public string BgMode = "cover_blur_tint"; // color | cover_blur | cover_blur_tint | cover_color
@@ -77,6 +90,14 @@ namespace NowPlaying
         public string DoubleClick = "toggle"; // toggle | settings | none
         public string SingleClick = "settings"; // settings | toggle | next | prev | none
 
+        // ---- вычисленные на лету (не сохраняются в ini) ----
+        public int EffWidth = 185;
+        public int EffHeight = 40;
+
+        /// <summary>Реальная ширина с учётом адаптации под экран.</summary>
+        public int DrawWidth { get { return EffWidth > 0 ? EffWidth : Width; } }
+        public int DrawHeight { get { return EffHeight > 0 ? EffHeight : Height; } }
+
         public Config Clone()
         {
             var c = new Config();
@@ -88,6 +109,9 @@ namespace NowPlaying
         {
             Width = o.Width; Height = o.Height; RightMargin = o.RightMargin;
             VertOffset = o.VertOffset; Corner = o.Corner; Padding = o.Padding;
+            AutoHeight = o.AutoHeight; MatchTaskbar = o.MatchTaskbar;
+            CompactNarrow = o.CompactNarrow;
+            NavButtons = o.NavButtons; NavSize = o.NavSize; NavGap = o.NavGap;
             BgEnabled = o.BgEnabled; BgR = o.BgR; BgG = o.BgG; BgB = o.BgB;
             OpacityPercent = o.OpacityPercent;
             BorderEnabled = o.BorderEnabled;
@@ -103,6 +127,9 @@ namespace NowPlaying
             Marquee = o.Marquee; MarqueeSpeed = o.MarqueeSpeed; MarqueeGap = o.MarqueeGap;
             DimPaused = o.DimPaused;
             TextShadow = o.TextShadow; TextColorMode = o.TextColorMode;
+            TextGap = o.TextGap; TextCase = o.TextCase;
+            TextOutline = o.TextOutline; OutlineWidth = o.OutlineWidth;
+            ShadowStrength = o.ShadowStrength;
             LineSpacing = o.LineSpacing; VAlign = o.VAlign;
             ThumbSide = o.ThumbSide; ThumbSize = o.ThumbSize; ThumbCorner = o.ThumbCorner;
             ThumbPlaceholder = o.ThumbPlaceholder;
@@ -110,6 +137,8 @@ namespace NowPlaying
             Progress = o.Progress; ProgressColor = o.ProgressColor;
             ProgressHeight = o.ProgressHeight; ProgressAlpha = o.ProgressAlpha;
             ProgressOffset = o.ProgressOffset;
+            ProgressRounded = o.ProgressRounded; ThumbShadow = o.ThumbShadow;
+
             BgMode = o.BgMode; CoverBlur = o.CoverBlur;
             CoverDark = o.CoverDark; CoverSaturation = o.CoverSaturation;
             ShowPaused = o.ShowPaused; HideWhenIdle = o.HideWhenIdle;
@@ -195,6 +224,12 @@ namespace NowPlaying
                         case "rightmargin": if (int.TryParse(v, out iv)) c.RightMargin = Clamp(iv, -400, 600); break;
                         case "vertoffset": if (int.TryParse(v, out iv)) c.VertOffset = Clamp(iv, -60, 60); break;
                         case "corner": if (int.TryParse(v, out iv)) c.Corner = Clamp(iv, 0, 40); break;
+                        case "autoheight": if (bool.TryParse(v, out bv)) c.AutoHeight = bv; break;
+                        case "matchtaskbar": if (bool.TryParse(v, out bv)) c.MatchTaskbar = bv; break;
+                        case "compactnarrow": if (bool.TryParse(v, out bv)) c.CompactNarrow = bv; break;
+                        case "navbuttons": if (bool.TryParse(v, out bv)) c.NavButtons = bv; break;
+                        case "navsize": if (int.TryParse(v, out iv)) c.NavSize = Clamp(iv, 8, 32); break;
+                        case "navgap": if (int.TryParse(v, out iv)) c.NavGap = Clamp(iv, 0, 16); break;
                         case "padding": if (int.TryParse(v, out iv)) c.Padding = Clamp(iv, 0, 24); break;
                         case "bgenabled": if (bool.TryParse(v, out bv)) c.BgEnabled = bv; break;
                         case "background": ApplyColor(v, ref c.BgR, ref c.BgG, ref c.BgB); break;
@@ -218,6 +253,13 @@ namespace NowPlaying
                         case "dimpaused": if (bool.TryParse(v, out bv)) c.DimPaused = bv; break;
                         case "textshadow": if (bool.TryParse(v, out bv)) c.TextShadow = bv; break;
                         case "textcolormode": if (v == "auto" || v == "light" || v == "dark" || v == "custom") c.TextColorMode = v; break;
+                        case "textgap": if (int.TryParse(v, out iv)) c.TextGap = Clamp(iv, 0, 40); break;
+                        case "textcase": if (v == "normal" || v == "upper" || v == "lower") c.TextCase = v; break;
+                        case "textoutline": if (bool.TryParse(v, out bv)) c.TextOutline = bv; break;
+                        case "outlinewidth": if (int.TryParse(v, out iv)) c.OutlineWidth = Clamp(iv, 1, 4); break;
+                        case "shadowstrength": if (int.TryParse(v, out iv)) c.ShadowStrength = Clamp(iv, 0, 255); break;
+                        case "progressrounded": if (bool.TryParse(v, out bv)) c.ProgressRounded = bv; break;
+                        case "thumbshadow": if (bool.TryParse(v, out bv)) c.ThumbShadow = bv; break;
                         case "thumboffset": if (int.TryParse(v, out iv)) c.ThumbOffset = Clamp(iv, -60, 60); break;
                         case "thumbvalign": if (v == "top" || v == "center" || v == "bottom") c.ThumbVAlign = v; break;
                         case "linespacing": if (int.TryParse(v, out iv)) c.LineSpacing = Clamp(iv, -4, 16); break;
@@ -279,6 +321,12 @@ namespace NowPlaying
                 sb.AppendLine("rightmargin=" + RightMargin);
                 sb.AppendLine("vertoffset=" + VertOffset);
                 sb.AppendLine("corner=" + Corner);
+                sb.AppendLine("autoHeight=" + AutoHeight);
+                sb.AppendLine("matchTaskbar=" + MatchTaskbar);
+                sb.AppendLine("compactNarrow=" + CompactNarrow);
+                sb.AppendLine("navButtons=" + NavButtons);
+                sb.AppendLine("navSize=" + NavSize);
+                sb.AppendLine("navGap=" + NavGap);
                 sb.AppendLine("padding=" + Padding);
                 sb.AppendLine();
                 sb.AppendLine("[background]");
@@ -309,6 +357,13 @@ namespace NowPlaying
                 sb.AppendLine("dimPaused=" + DimPaused);
                 sb.AppendLine("textShadow=" + TextShadow);
                 sb.AppendLine("textColorMode=" + TextColorMode);
+                sb.AppendLine("textGap=" + TextGap);
+                sb.AppendLine("textCase=" + TextCase);
+                sb.AppendLine("textOutline=" + TextOutline);
+                sb.AppendLine("outlineWidth=" + OutlineWidth);
+                sb.AppendLine("shadowStrength=" + ShadowStrength);
+                sb.AppendLine("progressRounded=" + ProgressRounded);
+                sb.AppendLine("thumbShadow=" + ThumbShadow);
                 sb.AppendLine("lineSpacing=" + LineSpacing);
                 sb.AppendLine("valign=" + VAlign);
                 sb.AppendLine();

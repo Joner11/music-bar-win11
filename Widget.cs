@@ -16,6 +16,8 @@ namespace NowPlaying
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
         [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder sb, int max);
+        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
         [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
         [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr mon, ref MONITORINFO mi);
         [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtr(IntPtr h, int idx);
@@ -48,8 +50,25 @@ namespace NowPlaying
             IntPtr fg = GetForegroundWindow();
             if (fg == IntPtr.Zero) return false;
             if (fg == FindWindow("Shell_TrayWnd", null)) return false;
-            if (fg == FindWindow("Progman", null)) return false;
-            if (fg == FindWindow("WorkerW", null)) return false;
+
+            // окна рабочего стола и обоев (в т.ч. Wallpaper Engine) — не «полный экран»
+            var cls = new System.Text.StringBuilder(256);
+            GetClassName(fg, cls, cls.Capacity);
+            string cn = cls.ToString();
+            if (cn == "Progman" || cn == "WorkerW" || cn == "Shell_TrayWnd" ||
+                cn == "Windows.UI.Core.CoreWindow" || cn == "SysListView32")
+                return false;
+
+            uint pid;
+            GetWindowThreadProcessId(fg, out pid);
+            try
+            {
+                string exe = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
+                if (exe == "wallpaper32" || exe == "wallpaper64" ||
+                    exe == "explorer" || exe == "dwm" || exe == "searchhost")
+                    return false;
+            }
+            catch { }
             RECT r;
             if (!GetWindowRect(fg, out r)) return false;
             if (r.Right - r.Left < 100 || r.Bottom - r.Top < 100) return false;
@@ -436,12 +455,12 @@ namespace NowPlaying
 
         int TextAreaWidth(Image th)
         {
-            int w = (int)Math.Round(Cfg.Width * dpiScale);
+            int w = (int)Math.Round(Cfg.DrawWidth * dpiScale);
             int pad = (int)Math.Round(Cfg.Padding * dpiScale);
             int side = 0;
             if (Cfg.ThumbSide != "none" && (th != null || Cfg.ThumbPlaceholder))
             {
-                int avail = (int)Math.Round(Cfg.Height * dpiScale) - pad * 2;
+                int avail = (int)Math.Round(Cfg.DrawHeight * dpiScale) - pad * 2;
                 int size = Cfg.ThumbSize > 0 ? (int)Math.Round(Cfg.ThumbSize * dpiScale) : avail;
                 if (size > avail) size = avail;
                 side = size + (int)Math.Round(6 * dpiScale);
@@ -461,8 +480,8 @@ namespace NowPlaying
                 return;
             }
 
-            int w = Math.Max(1, (int)Math.Round(Cfg.Width * dpiScale));
-            int h = Math.Max(1, (int)Math.Round(Cfg.Height * dpiScale));
+            int w = Math.Max(1, (int)Math.Round(Cfg.DrawWidth * dpiScale));
+            int h = Math.Max(1, (int)Math.Round(Cfg.DrawHeight * dpiScale));
 
             var bmp = Renderer.Render(Cfg, t, th, scrollPx, dpiScale);
             if (backBuffer != null) backBuffer.Dispose();
@@ -537,6 +556,29 @@ namespace NowPlaying
             using (var g = Graphics.FromHwnd(tb)) scale = g.DpiX / 96f;
             dpiScale = scale;
 
+            // ---- адаптация размеров под конкретный ПК ----
+            int effW = Cfg.Width;
+            int effH = Cfg.Height;
+
+            if (Cfg.MatchTaskbar)
+            {
+                // высота плашки = рабочей высоте панели задач минус запас
+                effH = Math.Max(16, (int)Math.Round(tbH / scale) - 4);
+            }
+            if (Cfg.CompactNarrow)
+            {
+                // узкая панель задач (маленький экран) — ужимаем плашку
+                int availCss = (int)((r.Right - r.Left) / scale);
+                int maxW = Math.Max(120, availCss / 5);
+                if (effW > maxW) effW = maxW;
+            }
+
+            Cfg.EffWidth = effW;
+            Cfg.EffHeight = effH;
+
+            int margin = (int)Math.Round(Cfg.RightMargin * scale);
+            if (margin < 0) margin = 0;                       // не заезжать на значки
+
             int trayLeft = r.Right - 350;
             IntPtr tnw = W32.FindWindowEx(tb, IntPtr.Zero, "TrayNotifyWnd", null);
             if (tnw != IntPtr.Zero)
@@ -545,11 +587,11 @@ namespace NowPlaying
                 if (W32.GetWindowRect(tnw, out tr) && tr.Left > r.Left) trayLeft = tr.Left;
             }
 
-            int w = Math.Max(1, (int)Math.Round(Cfg.Width * scale));
-            int h = Math.Max(1, (int)Math.Round(Cfg.Height * scale));
-            int margin = (int)Math.Round(Cfg.RightMargin * scale);
+            int w = Math.Max(1, (int)Math.Round(effW * scale));
+            int h = Math.Max(1, (int)Math.Round(effH * scale));
 
             int x = trayLeft - w - margin;
+            if (x < r.Left + Math.Max(8, (int)(8 * scale))) x = r.Left + Math.Max(8, (int)(8 * scale));
             int y = h <= tbH ? r.Top + (tbH - h) / 2 : r.Bottom - h;   // выше панели — прижимаем к низу
             y += (int)Math.Round(Cfg.VertOffset * scale);
             if (x + w > r.Right) x = r.Right - w;
@@ -593,9 +635,44 @@ namespace NowPlaying
             }
         }
 
+        /// <summary>Индекс кнопки управления под курсором или -1.</summary>
+        int NavHit(Point p)
+        {
+            if (!Cfg.NavButtons) return -1;
+            int w = (int)Math.Round(Cfg.DrawWidth * dpiScale);
+            int h = (int)Math.Round(Cfg.DrawHeight * dpiScale);
+            int inset = 0;
+            if (Cfg.ThumbSide == "right" && (thumb != null || Cfg.ThumbPlaceholder))
+            {
+                int pad2 = (int)Math.Round(Cfg.Padding * dpiScale);
+                int avail2 = h - pad2 * 2;
+                int sz = Cfg.ThumbSize > 0 ? (int)Math.Round(Cfg.ThumbSize * dpiScale) : avail2;
+                if (sz > avail2) sz = avail2;
+                inset = sz + (int)Math.Round(Cfg.TextGap * dpiScale);
+            }
+            var rects = Renderer.NavRects(Cfg, new Rectangle(0, 0, w, h), dpiScale, inset);
+            for (int i = 0; i < rects.Length; i++)
+                if (rects[i].Contains(p)) return i;
+            return -1;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            bool over = NavHit(e.Location) >= 0;
+            Cursor = over ? Cursors.Hand : Cursors.Default;
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left && NavHit(e.Location) >= 0)
+            {
+                _clickTimer.Stop();
+                int i = NavHit(e.Location);
+                DoAction(i == 0 ? "prev" : (i == 1 ? "toggle" : "next"));
+                return;
+            }
             if (e.Button == MouseButtons.Left)
             {
                 if (e.Clicks >= 2)
