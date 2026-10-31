@@ -6,9 +6,10 @@ A "now playing" strip for the Windows 11 taskbar. It sits to the left of the tra
 the album art, track title, artist and a progress bar. It doesn't cover taskbar buttons,
 doesn't flash in the taskbar and doesn't steal focus.
 
-**[Download for Windows](https://github.com/Joner11/music-bar-win11/releases/latest)** —
-installer without admin rights, Windows 10 (1809+) and Windows 11, 64-bit.
-There's a portable archive next to it if you'd rather not install anything.
+**[Download the installer](https://github.com/Joner11/music-bar-win11/releases/latest/download/MusicBarWin11-Setup.exe)** —
+Windows 10 (1809+) and Windows 11, 64-bit. No admin rights needed.
+If you'd rather not install anything, there's a
+[portable archive](https://github.com/Joner11/music-bar-win11/releases/latest) with the bare exe.
 
 ![Widget on the taskbar](docs/shot-taskbar.png)
 

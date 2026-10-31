@@ -6,9 +6,10 @@
 название трека, исполнителя и полосу прогресса. Кнопки панели задач не перекрывает, в таскбар
 не мигает, фокус не забирает.
 
-**[Скачать для Windows](https://github.com/Joner11/music-bar-win11/releases/latest)** —
-установщик без прав администратора, Windows 10 (1809+) и Windows 11, 64-битная.
-Рядом лежит portable-архив, если ставить не хочется.
+**[Скачать установщик](https://github.com/Joner11/music-bar-win11/releases/latest/download/MusicBarWin11-Setup.exe)** —
+Windows 10 (1809+) и Windows 11, 64-битная. Права администратора не нужны.
+Если ставить не хочется, есть [portable-архив](https://github.com/Joner11/music-bar-win11/releases/latest)
+с голым exe.
 
 ![Виджет на панели задач](docs/shot-taskbar.png)
 

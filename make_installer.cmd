@@ -14,5 +14,15 @@ if not exist MusicBarWin11.exe (
 )
 "%ISCC%" installer.iss
 if errorlevel 1 exit /b 1
+
+rem Копия с постоянным именем. На неё ссылается README:
+rem /releases/latest/download/MusicBarWin11-Setup.exe
+rem Так ссылка не меняется от версии к версии.
+for /f "delims=" %%f in ('dir /b /o-d "dist\MusicBarWin11-Setup-*.exe" 2^>nul') do (
+  copy /y "dist\%%f" "dist\MusicBarWin11-Setup.exe" >nul
+  goto :done
+)
+:done
+
 echo.
 echo Installer -^> dist\
