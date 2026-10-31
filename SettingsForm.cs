@@ -72,7 +72,7 @@ namespace NowPlaying
         NavButton[] navs;
         int page;
         static readonly string[] PageNames = {
-            "Размер и положение", "Фон", "Текст", "Обложка", "Поведение" };
+            "Размер и положение", "Фон", "Текст", "Обложка", "Кнопки", "Поведение" };
 
         public SettingsForm(Config cfg, TrackInfo track, Image thumb)
         {
@@ -276,6 +276,7 @@ namespace NowPlaying
             else if (idx == 1) BuildBackground(cards);
             else if (idx == 2) BuildText(cards);
             else if (idx == 3) BuildCover(cards);
+            else if (idx == 4) BuildButtons(cards);
             else BuildBehavior(cards);
 
             int y = 8;
@@ -586,47 +587,90 @@ namespace NowPlaying
                 delegate { return Cfg.ProgressOffset; }, delegate(int v) { Cfg.ProgressOffset = v; });
             AddToggle(c2, "Скруглённые концы", delegate { return Cfg.ProgressRounded; },
                 delegate(bool v) { Cfg.ProgressRounded = v; });
+        }
 
-            Card c3 = Card2("Кнопки управления");
-            cards.Add(c3);
-            AddToggle(c3, "Показывать кнопки в плашке", delegate { return Cfg.NavButtons; },
+        void BuildButtons(List<Card> cards)
+        {
+            Card c1 = Card2("Какие кнопки показывать");
+            Card c2 = Card2("Вид и расположение");
+            cards.Add(c1); cards.Add(c2);
+
+            AddToggle(c1, "Кнопки в плашке", delegate { return Cfg.NavButtons; },
                 delegate(bool v) { Cfg.NavButtons = v; RebuildPage(); });
+
+            ToggleSwitch tp = null, tl = null, tn = null;
             if (Cfg.NavButtons)
             {
-                AddToggle(c3, "Кнопка «назад»", delegate { return Cfg.NavPrev; },
-                    delegate(bool v) { Cfg.NavPrev = v; });
-                AddToggle(c3, "Кнопка «пауза / играть»", delegate { return Cfg.NavPlay; },
-                    delegate(bool v) { Cfg.NavPlay = v; });
-                AddToggle(c3, "Кнопка «вперёд»", delegate { return Cfg.NavNext; },
-                    delegate(bool v) { Cfg.NavNext = v; });
-                AddSlider(c3, "Размер кнопок", 8, 32, 1, 1, 0, " px",
-                    delegate { return Cfg.NavSize; }, delegate(int v) { Cfg.NavSize = v; });
-                AddSlider(c3, "Отступ между кнопками", 0, 16, 1, 1, 0, " px",
-                    delegate { return Cfg.NavGap; }, delegate(int v) { Cfg.NavGap = v; });
-                AddCombo(c3, "Сторона кнопок",
+                tp = AddToggleRef(c1, "Кнопка «назад»", Cfg.NavPrev,
+                    delegate(bool v) { Cfg.NavPrev = v; SyncGuards(); });
+                tl = AddToggleRef(c1, "Кнопка «пауза / играть»", Cfg.NavPlay,
+                    delegate(bool v) { Cfg.NavPlay = v; SyncGuards(); });
+                tn = AddToggleRef(c1, "Кнопка «вперёд»", Cfg.NavNext,
+                    delegate(bool v) { Cfg.NavNext = v; SyncGuards(); });
+                AddHint(c1, "Хотя бы одна кнопка должна остаться включённой");
+            }
+            else
+                AddHint(c1, "Кнопки выключены — включите тумблер выше");
+
+            if (Cfg.NavButtons)
+            {
+                AddCombo(c2, "Сторона",
                     new string[] { "Справа", "Слева" },
                     new string[] { "right", "left" },
                     delegate { return Cfg.NavSide; }, delegate(string v) { Cfg.NavSide = v; });
-                AddCombo(c3, "Цвет иконок",
+                AddSlider(c2, "Размер кнопки", 8, 32, 1, 1, 0, " px",
+                    delegate { return Cfg.NavSize; }, delegate(int v) { Cfg.NavSize = v; });
+                AddSlider(c2, "Отступ между кнопками", 0, 16, 1, 1, 0, " px",
+                    delegate { return Cfg.NavGap; }, delegate(int v) { Cfg.NavGap = v; });
+                AddSlider(c2, "Толщина иконок", 50, 200, 5, 1, 0, " %",
+                    delegate { return Cfg.NavWeight; }, delegate(int v) { Cfg.NavWeight = v; });
+                AddCombo(c2, "Порядок кнопок",
+                    new string[] { "Назад · пауза · вперёд", "Пауза · назад · вперёд", "Вперёд · пауза · назад" },
+                    new string[] { "prev_play_next", "play_prev_next", "next_play_prev" },
+                    delegate { return Cfg.NavOrder; }, delegate(string v) { Cfg.NavOrder = v; });
+                AddSlider(c2, "Сдвиг от края", -40, 60, 1, 1, 0, " px",
+                    delegate { return Cfg.NavOffset; }, delegate(int v) { Cfg.NavOffset = v; });
+                AddSlider(c2, "Прозрачность иконок", 20, 100, 5, 1, 0, " %",
+                    delegate { return Cfg.NavOpacity; }, delegate(int v) { Cfg.NavOpacity = v; });
+                AddToggle(c2, "Подсветка при наведении", delegate { return Cfg.NavHover; },
+                    delegate(bool v) { Cfg.NavHover = v; });
+                AddCombo(c2, "Цвет иконок",
                     new string[] { "Адаптивный к фону", "Свой цвет" },
                     new string[] { "auto", "custom" },
                     delegate { return Cfg.NavColorMode; }, delegate(string v) { Cfg.NavColorMode = v; RebuildPage(); });
                 if (Cfg.NavColorMode == "custom")
-                    AddColor(c3, "Цвет иконок", delegate { return Cfg.NavColor; },
+                    AddColor(c2, "Цвет иконок", delegate { return Cfg.NavColor; },
                         delegate(string v) { Cfg.NavColor = v; });
-                AddSlider(c3, "Толщина иконок", 50, 200, 5, 1, 0, " %",
-                    delegate { return Cfg.NavWeight; }, delegate(int v) { Cfg.NavWeight = v; });
-                AddToggle(c3, "Тень под плашкой", delegate { return Cfg.WidgetShadow; },
-                delegate(bool v) { Cfg.WidgetShadow = v; });
-            AddToggle(c3, "Подложка под кнопками", delegate { return Cfg.NavBackdrop; },
+                AddToggle(c2, "Подложка под кнопками", delegate { return Cfg.NavBackdrop; },
                     delegate(bool v) { Cfg.NavBackdrop = v; RebuildPage(); });
                 if (Cfg.NavBackdrop)
-                    AddSlider(c3, "Скругление подложки", 0, 50, 1, 1, 0, " %",
+                    AddSlider(c2, "Скругление подложки", 0, 50, 1, 1, 0, " %",
                         delegate { return Cfg.NavCorner; }, delegate(int v) { Cfg.NavCorner = v; });
-            AddHint(c3, "Клик по кнопке не открывает настройки — срабатывает только само действие");
             }
-            else
-                AddHint(c3, "Назад · пауза/играть · вперёд — каждая кнопка включается отдельно");
+        }
+
+        /// <summary>Тумблер с возвратом ссылки — чтобы блокировать «последнюю» кнопку.</summary>
+        ToggleSwitch AddToggleRef(Card card, string label, bool value, Action<bool> set)
+        {
+            ToggleSwitch t = new ToggleSwitch();
+            t.SetSilent(value);
+            t.BackColor = Color.FromArgb(30, 30, 35);
+            t.CheckedChanged += delegate
+            {
+                set(t.Checked);
+                if (!building) Raise();
+            };
+            AddRow(card, label, t, null);
+            return t;
+        }
+
+        void SyncGuards()
+        {
+            // не даём выключить все три кнопки разом
+            if (!Cfg.NavButtons) return;
+            if (Cfg.NavPrev || Cfg.NavPlay || Cfg.NavNext) return;
+            Cfg.NavPlay = true;
+            BeginInvoke((MethodInvoker)delegate { RebuildPage(); });
         }
 
         void BuildBehavior(List<Card> cards)

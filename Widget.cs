@@ -641,16 +641,9 @@ namespace NowPlaying
             if (!Cfg.NavButtons) return -1;
             int w = (int)Math.Round(Cfg.DrawWidth * dpiScale);
             int h = (int)Math.Round(Cfg.DrawHeight * dpiScale);
-            int inset = 0;
-            if (Cfg.ThumbSide == "right" && (thumb != null || Cfg.ThumbPlaceholder))
-            {
-                int pad2 = (int)Math.Round(Cfg.Padding * dpiScale);
-                int avail2 = h - pad2 * 2;
-                int sz = Cfg.ThumbSize > 0 ? (int)Math.Round(Cfg.ThumbSize * dpiScale) : avail2;
-                if (sz > avail2) sz = avail2;
-                inset = sz + (int)Math.Round(Cfg.TextGap * dpiScale);
-            }
-            var rects = Renderer.NavRects(Cfg, new Rectangle(0, 0, w, h), dpiScale, inset);
+            // ВАЖНО: те же аргументы, что и в Renderer.Draw (navInset = 0),
+            // иначе прямоугольники отрисовки и попадания расходятся.
+            var rects = Renderer.NavRects(Cfg, new Rectangle(0, 0, w, h), dpiScale, 0);
             var kinds = Renderer.NavKinds(Cfg);
             for (int i = 0; i < rects.Length; i++)
                 if (rects[i].Contains(p)) return i < kinds.Length ? kinds[i] : -1;
@@ -660,18 +653,32 @@ namespace NowPlaying
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool over = NavHit(e.Location) >= 0;
+            int hit = NavHit(e.Location);
+            bool over = hit >= 0;
             Cursor = over ? Cursors.Hand : Cursors.Default;
+            // подсветка под курсором
+            int idx = -1;
+            if (over)
+            {
+                var kinds = Renderer.NavKinds(Cfg);
+                for (int i = 0; i < kinds.Length; i++) if (kinds[i] == hit) { idx = i; break; }
+            }
+            if (Renderer.HoverIndex != idx)
+            {
+                Renderer.HoverIndex = idx;
+                needRender = true;
+            }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (e.Button == MouseButtons.Left && NavHit(e.Location) >= 0)
+            int nav = NavHit(e.Location);
+            if (e.Button == MouseButtons.Left && nav >= 0)
             {
                 _clickTimer.Stop();
-                int i = NavHit(e.Location);
-                DoAction(i == 0 ? "prev" : (i == 1 ? "toggle" : "next"));
+                DoAction(nav == 0 ? "prev" : (nav == 1 ? "toggle" : "next"));
+                MarkHandled();
                 return;
             }
             if (e.Button == MouseButtons.Left)
@@ -699,6 +706,22 @@ namespace NowPlaying
             }
         }
 
+        bool _navConsumed;
+
+        void MarkHandled()
+        {
+            _navConsumed = true;
+            var t = new System.Windows.Forms.Timer();
+            t.Interval = 320;
+            t.Tick += delegate
+            {
+                t.Stop();
+                _navConsumed = false;
+                t.Dispose();
+            };
+            t.Start();
+        }
+
         readonly System.Windows.Forms.Timer _clickTimer = new System.Windows.Forms.Timer { Interval = 260 };
         bool _clickTimerHooked;
 
@@ -711,6 +734,7 @@ namespace NowPlaying
                 _clickTimer.Tick += (s, a) =>
                 {
                     _clickTimer.Stop();
+                    if (_navConsumed) return;
                     DoAction(Cfg.SingleClick);
                 };
             }

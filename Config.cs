@@ -60,6 +60,10 @@ namespace NowPlaying
         public string NavColorMode = "auto"; // auto | custom
         public string NavColor = "230,230,236";
         public int NavWeight = 100;          // толщина иконок, %
+        public int NavOffset = 0;            // сдвиг группы от края, px
+        public int NavOpacity = 100;         // прозрачность иконок, %
+        public string NavOrder = "prev_play_next";
+        public bool NavHover = true;         // подсветка под курсором
         public int NavSize = 15;              // размер кнопок, px
         public int NavGap = 4;                // отступ между кнопками, px
         public int TextGap = 6;               // отступ текста от обложки, px
@@ -129,6 +133,8 @@ namespace NowPlaying
             NavBackdrop = o.NavBackdrop; NavCorner = o.NavCorner;
             NavSide = o.NavSide; NavColorMode = o.NavColorMode;
             NavColor = o.NavColor; NavWeight = o.NavWeight;
+            NavOffset = o.NavOffset; NavOpacity = o.NavOpacity;
+            NavOrder = o.NavOrder; NavHover = o.NavHover;
             ThumbCircle = o.ThumbCircle; ThumbBorder = o.ThumbBorder;
             WidgetShadow = o.WidgetShadow; TextOpacity = o.TextOpacity;
             BgEnabled = o.BgEnabled; BgR = o.BgR; BgG = o.BgG; BgB = o.BgB;
@@ -255,6 +261,10 @@ namespace NowPlaying
                         case "navcolormode": if (v == "auto" || v == "custom") c.NavColorMode = v; break;
                         case "navcolor": if (v.Length > 0) c.NavColor = v; break;
                         case "navweight": if (int.TryParse(v, out iv)) c.NavWeight = Clamp(iv, 50, 200); break;
+                        case "navoffset": if (int.TryParse(v, out iv)) c.NavOffset = Clamp(iv, -40, 60); break;
+                        case "navopacity": if (int.TryParse(v, out iv)) c.NavOpacity = Clamp(iv, 20, 100); break;
+                        case "navorder": if (v == "prev_play_next" || v == "play_prev_next" || v == "next_play_prev") c.NavOrder = v; break;
+                        case "navhover": if (bool.TryParse(v, out bv)) c.NavHover = bv; break;
                         case "navcorner": if (int.TryParse(v, out iv)) c.NavCorner = Clamp(iv, 0, 50); break;
                         case "thumbcircle": if (bool.TryParse(v, out bv)) c.ThumbCircle = bv; break;
                         case "thumbborder": if (bool.TryParse(v, out bv)) c.ThumbBorder = bv; break;
@@ -365,6 +375,10 @@ namespace NowPlaying
                 sb.AppendLine("navColorMode=" + NavColorMode);
                 sb.AppendLine("navColor=" + NavColor);
                 sb.AppendLine("navWeight=" + NavWeight);
+                sb.AppendLine("navOffset=" + NavOffset);
+                sb.AppendLine("navOpacity=" + NavOpacity);
+                sb.AppendLine("navOrder=" + NavOrder);
+                sb.AppendLine("navHover=" + NavHover);
                 sb.AppendLine("navCorner=" + NavCorner);
                 sb.AppendLine("navSize=" + NavSize);
                 sb.AppendLine("navGap=" + NavGap);

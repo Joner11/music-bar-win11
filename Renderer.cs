@@ -32,17 +32,29 @@ namespace NowPlaying
         public static int[] NavKinds(Config cfg)
         {
             if (!cfg.NavButtons) return new int[0];
+            int[] order;
+            if (cfg.NavOrder == "play_prev_next") order = new int[] { 1, 0, 2 };
+            else if (cfg.NavOrder == "next_play_prev") order = new int[] { 2, 1, 0 };
+            else order = new int[] { 0, 1, 2 };
+
             int n = 0;
             if (cfg.NavPrev) n++;
             if (cfg.NavPlay) n++;
             if (cfg.NavNext) n++;
             var k = new int[n];
             int i = 0;
-            if (cfg.NavPrev) k[i++] = 0;
-            if (cfg.NavPlay) k[i++] = 1;
-            if (cfg.NavNext) k[i] = 2;
+            foreach (int kind in order)
+            {
+                if (kind == 0 && !cfg.NavPrev) continue;
+                if (kind == 1 && !cfg.NavPlay) continue;
+                if (kind == 2 && !cfg.NavNext) continue;
+                k[i++] = kind;
+            }
             return k;
         }
+
+        /// <summary>Индекс кнопки под курсором (-1 = нет) — для подсветки.</summary>
+        public static int HoverIndex = -1;
 
         public static int NavWidth(Config cfg, float scale)
         {
@@ -68,9 +80,10 @@ namespace NowPlaying
             int gap = (int)Math.Round(cfg.NavGap * scale);
             int pad = (int)Math.Round(cfg.Padding * scale);
             int total = size * kinds.Length + gap * (kinds.Length - 1);
+            int off = (int)Math.Round(cfg.NavOffset * scale);
             int x0 = cfg.NavSide == "left"
-                ? bounds.X + pad + gap
-                : bounds.Right - pad - rightInset - total - (rightInset > 0 ? 0 : gap);
+                ? bounds.X + pad + gap + off
+                : bounds.Right - pad - rightInset - total - (rightInset > 0 ? 0 : gap) - off;
             int y = bounds.Y + (bounds.Height - size) / 2;
             var r = new Rectangle[kinds.Length];
             for (int i = 0; i < kinds.Length; i++) r[i] = new Rectangle(x0 + i * (size + gap), y, size, size);
@@ -377,6 +390,8 @@ namespace NowPlaying
                 bool lightBg2 = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
                 if (lightBg2) nc = Color.FromArgb(70, 70, 82);
                 if (cfg.NavColorMode == "custom") nc = Config.ParseColor(cfg.NavColor, nc);
+                if (cfg.NavOpacity < 100)
+                    nc = Color.FromArgb(nc.A * cfg.NavOpacity / 100, nc.R, nc.G, nc.B);
                 if (t != null && !t.IsPlaying && cfg.DimPaused) nc = Color.FromArgb(130, nc);
                 bool playing = t == null || t.IsPlaying;
 
@@ -385,6 +400,12 @@ namespace NowPlaying
                 for (int i = 0; i < rects.Length && i < kinds.Length; i++)
                 {
                     var r = rects[i];
+                    if (cfg.NavHover && HoverIndex == i && cfg.NavBackdrop)
+                    {
+                        int rad0 = (int)Math.Round(r.Width * cfg.NavCorner / 100.0);
+                        using (var b = new SolidBrush(Color.FromArgb(46, 255, 255, 255)))
+                            g.FillPath(b, RoundRect(new RectangleF(r.X, r.Y, r.Width, r.Height), rad0));
+                    }
                     if (cfg.NavBackdrop)
                     {
                         int rad = (int)Math.Round(r.Width * cfg.NavCorner / 100.0);
