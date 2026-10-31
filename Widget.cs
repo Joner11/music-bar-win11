@@ -21,6 +21,19 @@ namespace NowPlaying
         [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
         [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr mon, ref MONITORINFO mi);
         [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtr(IntPtr h, int idx);
+        [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+
+        // Контексты DPI для SetThreadDpiAwarenessContext (Windows 10 1607+).
+        // Виджету нужен реальный DPI панели задач, иначе на 125-150% его
+        // растягивает DWM и текст мылится. Окно настроек наоборот оставляем
+        // DPI-unaware, чтобы не менять его вёрстку.
+        public static readonly IntPtr DPI_UNWARE = new IntPtr(-1);
+        public static readonly IntPtr DPI_PER_MONITOR_V2 = new IntPtr(-4);
+
+        public static void UseDpi(IntPtr ctx)
+        {
+            try { SetThreadDpiAwarenessContext(ctx); } catch { }
+        }
         [DllImport("user32.dll")] public static extern IntPtr SetWindowLongPtr(IntPtr h, int idx, IntPtr val);
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -202,8 +215,7 @@ namespace NowPlaying
             menu.Items.Add(miExit);
 
             trayIcon = new NotifyIcon();
-            try { trayIcon.Icon = new Icon(Application.StartupPath + "\\icon.ico"); }
-            catch { trayIcon.Icon = SystemIcons.Application; }
+            trayIcon.Icon = AppIcon();
             trayIcon.Text = "Music Bar Win11 — сейчас играет";
             trayIcon.ContextMenuStrip = menu;
             trayIcon.Visible = true;
@@ -214,6 +226,24 @@ namespace NowPlaying
             ContextMenuStrip = menu;
         }
 
+        /// <summary>
+        /// Иконка для трея. Рядом с exe файла icon.ico в установленной версии нет,
+        /// поэтому берём иконку, вшитую в сам exe (csc /win32icon), а icon.ico
+        /// из папки программы — только как запасной вариант для портативной сборки.
+        /// </summary>
+        internal static Icon AppIcon()
+        {
+            try
+            {
+                Icon ic = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (ic != null) return ic;
+            }
+            catch { }
+            try { return new Icon(System.IO.Path.Combine(Application.StartupPath, "icon.ico")); }
+            catch { }
+            return SystemIcons.Application;
+        }
+
         public void OpenSettings()
         {
             if (settings != null && !settings.IsDisposed)
@@ -221,6 +251,7 @@ namespace NowPlaying
                 settings.Activate();
                 return;
             }
+            W32.UseDpi(W32.DPI_UNWARE);
             SettingsForm s;
             try { s = new SettingsForm(Cfg, track, thumb); }
             catch (Exception ex)
@@ -229,6 +260,7 @@ namespace NowPlaying
                 MessageBox.Show(ex.ToString(), "Ошибка настроек");
                 return;
             }
+            W32.UseDpi(W32.DPI_PER_MONITOR_V2);
             settings = s;
             s.LiveChanged += () =>
             {
@@ -929,6 +961,10 @@ namespace NowPlaying
                     try { System.IO.File.AppendAllText(System.IO.Path.Combine(Application.StartupPath, "error.log"), DateTime.Now + " THREAD: " + ex.Exception + Environment.NewLine); } catch { }
                 };
                 try { Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException); } catch { }
+
+                // Реальный DPI до создания окна: иначе Windows растягивает
+                // плашку, и на масштабе >100% текст выглядит мыльным.
+                W32.UseDpi(W32.DPI_PER_MONITOR_V2);
 
                 var cfg = Config.Load();
                 var w = new Widget(cfg);

@@ -10,7 +10,7 @@
 
 #define AppName        "Music Bar Win11"
 #define AppShortName   "MusicBarWin11"
-#define AppVersion     "1.4.4"
+#define AppVersion     "1.4.5"
 #define AppPublisher   "Music Bar Win11"
 #define AppExe         "MusicBarWin11.exe"
 #define AppId          "{{8F3C1A52-7D64-4E19-9B2A-5C6E7A4D1F03}"
@@ -36,7 +36,9 @@ AllowNoIcons=yes
 ; платформа: Windows 10/11 x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+MinVersion=10.0.17763
+CloseApplications=yes
+RestartApplications=no
 
 OutputDir=dist
 OutputBaseFilename={#AppShortName}-Setup-{#AppVersion}
@@ -110,6 +112,33 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Code]
 var
   AutostartPage: TInputOptionWizardPage;
+
+{ .NET Framework 4.7.2 (Release = 461808). На Windows 10 1809+ и Windows 11
+  он уже установлен, но на старых сборках Win10 и в урезанных образах может
+  отсутствовать — тогда exe падает при старте, поэтому проверяем до установки. }
+function Net472Present: Boolean;
+var
+  Rel: Cardinal;
+begin
+  Result := RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full',
+    'Release', Rel) and (Rel >= 461808);
+end;
+
+function InitializeSetup: Boolean;
+var
+  ErrCode: Integer;
+begin
+  Result := True;
+  if not Net472Present then
+  begin
+    if MsgBox('Для Music Bar Win11 нужен .NET Framework 4.7.2 или новее.' + #13#10 +
+      'На Windows 10 1809 и Windows 11 он уже установлен.' + #13#10#13#10 +
+      'Открыть страницу загрузки?', mbConfirmation, MB_YESNO) = IDYES then
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet-framework/net472',
+        '', '', SW_SHOW, ewNoWait, ErrCode);
+    Result := False;
+  end;
+end;
 
 procedure InitializeWizard;
 begin

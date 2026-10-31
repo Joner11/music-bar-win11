@@ -4,7 +4,7 @@ set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 set REFDIR=C:\Windows\Microsoft.NET\Framework64\v4.0.30319
 set WINMD=C:\Windows\System32\WinMetadata
 taskkill /F /IM MusicBarWin11.exe >nul 2>&1
-"%CSC%" /nologo /target:winexe /optimize+ /out:MusicBarWin11.exe /win32icon:icon.ico ^
+"%CSC%" /nologo /target:winexe /optimize+ /out:MusicBarWin11.exe /win32icon:icon.ico /win32manifest:app.manifest ^
   /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
   /r:"%REFDIR%\System.Runtime.WindowsRuntime.dll" ^
   /r:"%REFDIR%\System.Runtime.dll" ^

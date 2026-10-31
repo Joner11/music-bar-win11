@@ -105,8 +105,12 @@ No administrator rights needed: the app installs into
 If you'd rather skip the installer, take `MusicBarWin11.exe` from the portable archive, put it
 wherever you like and run it. Settings will be created in `%APPDATA%` as well.
 
-Requires Windows 10 version 1809 or newer, or Windows 11, plus .NET Framework 4.7.2, which is
-already present on both.
+Requires 64-bit Windows 10 version 1809 or newer, or Windows 11, plus .NET Framework 4.7.2.
+It's already present on both, so there's nothing extra to install. If it happens to be
+missing, the installer says so up front and offers a link.
+
+The app is display-scaling aware: at 125 % and 150 % the text stays crisp instead of being
+stretched by the system.
 
 Upgrading from an older version is just running the installer over it. Settings survive.
 
