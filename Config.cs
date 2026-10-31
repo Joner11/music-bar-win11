@@ -50,7 +50,16 @@ namespace NowPlaying
         public bool DimPaused = false;
         public bool TextShadow = false;
         public string TextColorMode = "auto";  // auto | custom
-        public bool NavButtons = false;       // кнопки «назад / пауза / вперёд»
+        public bool NavButtons = true;        // мастер-выключатель кнопок
+        public bool NavPrev = true;           // кнопка «назад»
+        public bool NavPlay = true;           // кнопка «пауза / играть»
+        public bool NavNext = true;           // кнопка «вперёд»
+        public string NavSide = "right";      // right | left — где группа кнопок
+        public bool NavBackdrop = false;      // подложка под кнопками
+        public int NavCorner = 30;            // скругление подложки, % от размера
+        public string NavColorMode = "auto"; // auto | custom
+        public string NavColor = "230,230,236";
+        public int NavWeight = 100;          // толщина иконок, %
         public int NavSize = 15;              // размер кнопок, px
         public int NavGap = 4;                // отступ между кнопками, px
         public int TextGap = 6;               // отступ текста от обложки, px
@@ -75,6 +84,10 @@ namespace NowPlaying
         public int ProgressOffset = -1;       // сдвиг полосы вверх от нижнего края, px
         public bool ProgressRounded = true;   // скруглённые концы полосы
         public bool ThumbShadow = false;      // мягкая тень под обложкой
+        public bool ThumbCircle = false;      // обложка кругом
+        public bool ThumbBorder = false;      // тонкая рамка вокруг обложки
+        public bool WidgetShadow = false;     // мягкая тень под всей плашкой
+        public int TextOpacity = 100;         // прозрачность текста, %
 
         // ---- фон из обложки ----
         public string BgMode = "cover_blur_tint"; // color | cover_blur | cover_blur_tint | cover_color
@@ -112,6 +125,12 @@ namespace NowPlaying
             AutoHeight = o.AutoHeight; MatchTaskbar = o.MatchTaskbar;
             CompactNarrow = o.CompactNarrow;
             NavButtons = o.NavButtons; NavSize = o.NavSize; NavGap = o.NavGap;
+            NavPrev = o.NavPrev; NavPlay = o.NavPlay; NavNext = o.NavNext;
+            NavBackdrop = o.NavBackdrop; NavCorner = o.NavCorner;
+            NavSide = o.NavSide; NavColorMode = o.NavColorMode;
+            NavColor = o.NavColor; NavWeight = o.NavWeight;
+            ThumbCircle = o.ThumbCircle; ThumbBorder = o.ThumbBorder;
+            WidgetShadow = o.WidgetShadow; TextOpacity = o.TextOpacity;
             BgEnabled = o.BgEnabled; BgR = o.BgR; BgG = o.BgG; BgB = o.BgB;
             OpacityPercent = o.OpacityPercent;
             BorderEnabled = o.BorderEnabled;
@@ -228,6 +247,19 @@ namespace NowPlaying
                         case "matchtaskbar": if (bool.TryParse(v, out bv)) c.MatchTaskbar = bv; break;
                         case "compactnarrow": if (bool.TryParse(v, out bv)) c.CompactNarrow = bv; break;
                         case "navbuttons": if (bool.TryParse(v, out bv)) c.NavButtons = bv; break;
+                        case "navprev": if (bool.TryParse(v, out bv)) c.NavPrev = bv; break;
+                        case "navplay": if (bool.TryParse(v, out bv)) c.NavPlay = bv; break;
+                        case "navnext": if (bool.TryParse(v, out bv)) c.NavNext = bv; break;
+                        case "navbackdrop": if (bool.TryParse(v, out bv)) c.NavBackdrop = bv; break;
+                        case "navside": if (v == "left" || v == "right") c.NavSide = v; break;
+                        case "navcolormode": if (v == "auto" || v == "custom") c.NavColorMode = v; break;
+                        case "navcolor": if (v.Length > 0) c.NavColor = v; break;
+                        case "navweight": if (int.TryParse(v, out iv)) c.NavWeight = Clamp(iv, 50, 200); break;
+                        case "navcorner": if (int.TryParse(v, out iv)) c.NavCorner = Clamp(iv, 0, 50); break;
+                        case "thumbcircle": if (bool.TryParse(v, out bv)) c.ThumbCircle = bv; break;
+                        case "thumbborder": if (bool.TryParse(v, out bv)) c.ThumbBorder = bv; break;
+                        case "widgetshadow": if (bool.TryParse(v, out bv)) c.WidgetShadow = bv; break;
+                        case "textopacity": if (int.TryParse(v, out iv)) c.TextOpacity = Clamp(iv, 10, 100); break;
                         case "navsize": if (int.TryParse(v, out iv)) c.NavSize = Clamp(iv, 8, 32); break;
                         case "navgap": if (int.TryParse(v, out iv)) c.NavGap = Clamp(iv, 0, 16); break;
                         case "padding": if (int.TryParse(v, out iv)) c.Padding = Clamp(iv, 0, 24); break;
@@ -325,6 +357,15 @@ namespace NowPlaying
                 sb.AppendLine("matchTaskbar=" + MatchTaskbar);
                 sb.AppendLine("compactNarrow=" + CompactNarrow);
                 sb.AppendLine("navButtons=" + NavButtons);
+                sb.AppendLine("navPrev=" + NavPrev);
+                sb.AppendLine("navPlay=" + NavPlay);
+                sb.AppendLine("navNext=" + NavNext);
+                sb.AppendLine("navBackdrop=" + NavBackdrop);
+                sb.AppendLine("navSide=" + NavSide);
+                sb.AppendLine("navColorMode=" + NavColorMode);
+                sb.AppendLine("navColor=" + NavColor);
+                sb.AppendLine("navWeight=" + NavWeight);
+                sb.AppendLine("navCorner=" + NavCorner);
                 sb.AppendLine("navSize=" + NavSize);
                 sb.AppendLine("navGap=" + NavGap);
                 sb.AppendLine("padding=" + Padding);
@@ -362,6 +403,7 @@ namespace NowPlaying
                 sb.AppendLine("textOutline=" + TextOutline);
                 sb.AppendLine("outlineWidth=" + OutlineWidth);
                 sb.AppendLine("shadowStrength=" + ShadowStrength);
+                sb.AppendLine("textOpacity=" + TextOpacity);
                 sb.AppendLine("progressRounded=" + ProgressRounded);
                 sb.AppendLine("thumbShadow=" + ThumbShadow);
                 sb.AppendLine("lineSpacing=" + LineSpacing);
@@ -371,6 +413,9 @@ namespace NowPlaying
                 sb.AppendLine("thumbside=" + ThumbSide);
                 sb.AppendLine("thumbsize=" + ThumbSize);
                 sb.AppendLine("thumbcorner=" + ThumbCorner);
+                sb.AppendLine("thumbCircle=" + ThumbCircle);
+                sb.AppendLine("thumbBorder=" + ThumbBorder);
+                sb.AppendLine("widgetShadow=" + WidgetShadow);
                 sb.AppendLine("thumbOffset=" + ThumbOffset);
                 sb.AppendLine("thumbValign=" + ThumbVAlign);
                 sb.AppendLine("thumbPlaceholder=" + ThumbPlaceholder);

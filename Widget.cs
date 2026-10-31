@@ -651,8 +651,9 @@ namespace NowPlaying
                 inset = sz + (int)Math.Round(Cfg.TextGap * dpiScale);
             }
             var rects = Renderer.NavRects(Cfg, new Rectangle(0, 0, w, h), dpiScale, inset);
+            var kinds = Renderer.NavKinds(Cfg);
             for (int i = 0; i < rects.Length; i++)
-                if (rects[i].Contains(p)) return i;
+                if (rects[i].Contains(p)) return i < kinds.Length ? kinds[i] : -1;
             return -1;
         }
 

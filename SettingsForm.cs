@@ -14,7 +14,6 @@ namespace NowPlaying
         public TrackInfo Track;
         public Image Thumb;
         public float ScrollPx;
-        const int TbH = 34;
 
         public PreviewBox()
         {
@@ -30,46 +29,29 @@ namespace NowPlaying
             g.Clear(Theme.Bg);
             if (Cfg == null) return;
 
-            Rectangle card = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (var lg = new LinearGradientBrush(
-                new Rectangle(card.X, card.Y, card.Width, card.Height > 0 ? card.Height : 1),
-                Color.FromArgb(26, 26, 32), Color.FromArgb(16, 16, 21), 90f))
-                g.FillPath(lg, Draw.Round(card, 10));
-            Draw.StrokeRound(g, card, 10, Theme.Sep);
+            // полоска панели задач во всю ширину, виджет в правом углу — как в жизни
+            int barH = Math.Max(30, Height - 2);
+            Rectangle bar = new Rectangle(0, (Height - barH) / 2, Width, barH);
+            using (var lg = new LinearGradientBrush(bar, Color.FromArgb(34, 34, 41), Color.FromArgb(24, 24, 30), 90f))
+                g.FillRectangle(lg, bar);
+            using (var pn = new Pen(Theme.Sep))
+            {
+                g.DrawLine(pn, bar.Left, bar.Top, bar.Right, bar.Top);
+                g.DrawLine(pn, bar.Left, bar.Bottom - 1, bar.Right, bar.Bottom - 1);
+            }
 
-            using (var f = Theme.F(7.5f, true))
-                Draw.Text(g, "ЖИВОЙ ПРЕДПРОСМОТР", f, Color.FromArgb(96, 96, 108),
-                    new Rectangle(card.X + 18, card.Y + 9, 240, 14), StringAlignment.Near, StringAlignment.Center);
-
-            // ---- макет панели задач ровно под виджет ----
-            float avail = Width - 60;
-            float scale = Math.Min(1.0f, avail / Math.Max(1, Cfg.Width));
-            int w = Math.Max(1, (int)Math.Round(Cfg.Width * scale));
-            int h = Math.Max(1, (int)Math.Round(Cfg.Height * scale));
-
-            int stripW = Math.Min(Width - 40, w + 64);
-            int stripH = Math.Max(TbH, h + 10);
-            Rectangle bar = new Rectangle((Width - stripW) / 2, card.Y + 30 + (card.Height - 40 - stripH) / 2,
-                stripW, stripH);
-            if (bar.Bottom > card.Bottom - 8) bar.Y = card.Bottom - 8 - bar.Height;
-
-            using (var lg = new LinearGradientBrush(
-                new Rectangle(bar.X, bar.Y, bar.Width, Math.Max(1, bar.Height)),
-                Color.FromArgb(40, 40, 48), Color.FromArgb(30, 30, 37), 90f))
-                g.FillPath(lg, Draw.Round(bar, 7));
-            Draw.StrokeRound(g, bar, 7, Color.FromArgb(52, 52, 62));
+            float scale = 1.0f;
+            int w = Math.Max(1, (int)Math.Round(Cfg.DrawWidth * scale));
+            int h = Math.Max(1, (int)Math.Round(Cfg.DrawHeight * scale));
+            if (h > barH - 8) { scale = (barH - 8) / (float)h; w = Math.Max(1, (int)Math.Round(Cfg.DrawWidth * scale)); h = Math.Max(1, (int)Math.Round(Cfg.DrawHeight * scale)); }
+            if (w > Width - 24) { scale *= (Width - 24) / (float)w; w = Math.Max(1, (int)Math.Round(Cfg.DrawWidth * scale)); h = Math.Max(1, (int)Math.Round(Cfg.DrawHeight * scale)); }
 
             using (var bmp = Renderer.Render(Cfg, Track, Thumb, ScrollPx, scale))
             {
-                int x = bar.X + (bar.Width - w) / 2;
-                int y = bar.Y + (bar.Height - h) / 2;
+                int x = bar.Right - w - 14;
+                int y = bar.Top + (bar.Height - h) / 2;
                 g.DrawImageUnscaled(bmp, x, y);
             }
-
-            if (scale < 0.999f)
-                using (var f = Theme.F(7.5f, false))
-                    Draw.Text(g, (int)Math.Round(scale * 100) + "%", f, Color.FromArgb(96, 96, 108),
-                        new Rectangle(card.Right - 70, card.Y + 9, 52, 14), StringAlignment.Far, StringAlignment.Center);
         }
     }
 
@@ -218,7 +200,8 @@ namespace NowPlaying
             // ---- предпросмотр ----
             Panel top = new Panel();
             top.Dock = DockStyle.Top;
-            top.Height = 116;
+            top.Height = 56;
+            top.Padding = new Padding(14, 4, 14, 4);
             top.BackColor = Theme.Bg;
             Controls.Add(top);
 
@@ -228,7 +211,6 @@ namespace NowPlaying
             preview.Track = Track;
             preview.Thumb = Thumb;
             preview.Margin = new Padding(0);
-            top.Padding = new Padding(20, 6, 26, 6);
             top.Controls.Add(preview);
 
             // ---- содержимое ----
@@ -539,6 +521,8 @@ namespace NowPlaying
                 delegate { return Cfg.VAlign; }, delegate(string v) { Cfg.VAlign = v; });
             AddSlider(c2, "Расстояние между строками", -4, 16, 1, 1, 0, " px",
                 delegate { return Cfg.LineSpacing; }, delegate(int v) { Cfg.LineSpacing = v; });
+            AddSlider(c2, "Прозрачность текста", 10, 100, 5, 1, 0, " %",
+                delegate { return Cfg.TextOpacity; }, delegate(int v) { Cfg.TextOpacity = v; });
             AddToggle(c2, "Тень текста", delegate { return Cfg.TextShadow; },
                 delegate(bool v) { Cfg.TextShadow = v; RebuildPage(); });
             if (Cfg.TextShadow)
@@ -585,6 +569,10 @@ namespace NowPlaying
                 delegate(bool v) { Cfg.ThumbPlaceholder = v; });
             AddToggle(c1, "Тень под обложкой", delegate { return Cfg.ThumbShadow; },
                 delegate(bool v) { Cfg.ThumbShadow = v; });
+            AddToggle(c1, "Круглая обложка", delegate { return Cfg.ThumbCircle; },
+                delegate(bool v) { Cfg.ThumbCircle = v; RebuildPage(); });
+            AddToggle(c1, "Рамка вокруг обложки", delegate { return Cfg.ThumbBorder; },
+                delegate(bool v) { Cfg.ThumbBorder = v; });
 
             AddToggle(c2, "Показывать прогресс", delegate { return Cfg.Progress; },
                 delegate(bool v) { Cfg.Progress = v; });
@@ -601,18 +589,44 @@ namespace NowPlaying
 
             Card c3 = Card2("Кнопки управления");
             cards.Add(c3);
-            AddToggle(c3, "Показывать кнопки", delegate { return Cfg.NavButtons; },
+            AddToggle(c3, "Показывать кнопки в плашке", delegate { return Cfg.NavButtons; },
                 delegate(bool v) { Cfg.NavButtons = v; RebuildPage(); });
             if (Cfg.NavButtons)
             {
+                AddToggle(c3, "Кнопка «назад»", delegate { return Cfg.NavPrev; },
+                    delegate(bool v) { Cfg.NavPrev = v; });
+                AddToggle(c3, "Кнопка «пауза / играть»", delegate { return Cfg.NavPlay; },
+                    delegate(bool v) { Cfg.NavPlay = v; });
+                AddToggle(c3, "Кнопка «вперёд»", delegate { return Cfg.NavNext; },
+                    delegate(bool v) { Cfg.NavNext = v; });
                 AddSlider(c3, "Размер кнопок", 8, 32, 1, 1, 0, " px",
                     delegate { return Cfg.NavSize; }, delegate(int v) { Cfg.NavSize = v; });
                 AddSlider(c3, "Отступ между кнопками", 0, 16, 1, 1, 0, " px",
                     delegate { return Cfg.NavGap; }, delegate(int v) { Cfg.NavGap = v; });
-                AddHint(c3, "Назад · пауза/играть · вперёд — прямо в плашке, кликаются");
+                AddCombo(c3, "Сторона кнопок",
+                    new string[] { "Справа", "Слева" },
+                    new string[] { "right", "left" },
+                    delegate { return Cfg.NavSide; }, delegate(string v) { Cfg.NavSide = v; });
+                AddCombo(c3, "Цвет иконок",
+                    new string[] { "Адаптивный к фону", "Свой цвет" },
+                    new string[] { "auto", "custom" },
+                    delegate { return Cfg.NavColorMode; }, delegate(string v) { Cfg.NavColorMode = v; RebuildPage(); });
+                if (Cfg.NavColorMode == "custom")
+                    AddColor(c3, "Цвет иконок", delegate { return Cfg.NavColor; },
+                        delegate(string v) { Cfg.NavColor = v; });
+                AddSlider(c3, "Толщина иконок", 50, 200, 5, 1, 0, " %",
+                    delegate { return Cfg.NavWeight; }, delegate(int v) { Cfg.NavWeight = v; });
+                AddToggle(c3, "Тень под плашкой", delegate { return Cfg.WidgetShadow; },
+                delegate(bool v) { Cfg.WidgetShadow = v; });
+            AddToggle(c3, "Подложка под кнопками", delegate { return Cfg.NavBackdrop; },
+                    delegate(bool v) { Cfg.NavBackdrop = v; RebuildPage(); });
+                if (Cfg.NavBackdrop)
+                    AddSlider(c3, "Скругление подложки", 0, 50, 1, 1, 0, " %",
+                        delegate { return Cfg.NavCorner; }, delegate(int v) { Cfg.NavCorner = v; });
+            AddHint(c3, "Клик по кнопке не открывает настройки — срабатывает только само действие");
             }
             else
-                AddHint(c3, "Кнопки «назад / пауза / вперёд» можно включить и выключить");
+                AddHint(c3, "Назад · пауза/играть · вперёд — каждая кнопка включается отдельно");
         }
 
         void BuildBehavior(List<Card> cards)

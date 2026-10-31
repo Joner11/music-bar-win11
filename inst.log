@@ -70,7 +70,6 @@ Parsing [Files] section, line 82
 Parsing [Files] section, line 83
 Parsing [Files] section, line 84
 Compiling [Code] section
-Deleting MusicBarWin11-Setup-1.2.0.exe from output directory
 Creating setup files
    Verification successful
    Updating icons (Setup.exe)
@@ -82,7 +81,7 @@ Creating setup files
    Updating manifest (Setup.exe)
 
 
-Successful compile (1,187 sec). Resulting Setup program filename is:
-C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist\MusicBarWin11-Setup-1.2.0.exe
+Successful compile (1,203 sec). Resulting Setup program filename is:
+C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist\MusicBarWin11-Setup-1.3.0.exe
 
 Installer -> dist\

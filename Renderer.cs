@@ -28,15 +28,32 @@ namespace NowPlaying
         }
 
         /// <summary>Ширина блока кнопок управления (0, если он выключен).</summary>
-        public static int NavWidth(Config cfg, float scale)
+        /// <summary>Какие кнопки включены: 0 = назад, 1 = пауза/играть, 2 = вперёд.</summary>
+        public static int[] NavKinds(Config cfg)
         {
-            if (!cfg.NavButtons) return 0;
-            int size = Math.Max(6, (int)Math.Round(cfg.NavSize * scale));
-            int gap = (int)Math.Round(cfg.NavGap * scale);
-            return size * 3 + gap * 2 + gap;
+            if (!cfg.NavButtons) return new int[0];
+            int n = 0;
+            if (cfg.NavPrev) n++;
+            if (cfg.NavPlay) n++;
+            if (cfg.NavNext) n++;
+            var k = new int[n];
+            int i = 0;
+            if (cfg.NavPrev) k[i++] = 0;
+            if (cfg.NavPlay) k[i++] = 1;
+            if (cfg.NavNext) k[i] = 2;
+            return k;
         }
 
-        /// <summary>Прямоугольники трёх кнопок — для отрисовки и для попадания мыши.</summary>
+        public static int NavWidth(Config cfg, float scale)
+        {
+            var kinds = NavKinds(cfg);
+            if (kinds.Length == 0) return 0;
+            int size = Math.Max(6, (int)Math.Round(cfg.NavSize * scale));
+            int gap = (int)Math.Round(cfg.NavGap * scale);
+            int pad = (int)Math.Round(cfg.Padding * scale);
+            return size * kinds.Length + gap * (kinds.Length - 1) + gap + pad / 2;
+        }
+
         public static Rectangle[] NavRects(Config cfg, Rectangle bounds, float scale)
         {
             return NavRects(cfg, bounds, scale, 0);
@@ -45,15 +62,18 @@ namespace NowPlaying
         /// <summary>rightInset — сколько места справа занято обложкой.</summary>
         public static Rectangle[] NavRects(Config cfg, Rectangle bounds, float scale, int rightInset)
         {
-            if (!cfg.NavButtons) return new Rectangle[0];
+            var kinds = NavKinds(cfg);
+            if (kinds.Length == 0) return new Rectangle[0];
             int size = Math.Max(6, (int)Math.Round(cfg.NavSize * scale));
             int gap = (int)Math.Round(cfg.NavGap * scale);
             int pad = (int)Math.Round(cfg.Padding * scale);
-            int total = size * 3 + gap * 2;
-            int x0 = bounds.Right - pad - rightInset - total;
+            int total = size * kinds.Length + gap * (kinds.Length - 1);
+            int x0 = cfg.NavSide == "left"
+                ? bounds.X + pad + gap
+                : bounds.Right - pad - rightInset - total - (rightInset > 0 ? 0 : gap);
             int y = bounds.Y + (bounds.Height - size) / 2;
-            var r = new Rectangle[3];
-            for (int i = 0; i < 3; i++) r[i] = new Rectangle(x0 + i * (size + gap), y, size, size);
+            var r = new Rectangle[kinds.Length];
+            for (int i = 0; i < kinds.Length; i++) r[i] = new Rectangle(x0 + i * (size + gap), y, size, size);
             return r;
         }
 
@@ -62,6 +82,17 @@ namespace NowPlaying
             int navInset = 0;
             int radius = (int)Math.Round(cfg.Corner * scale);
             var body = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+
+            // ---- тень под плашкой ----
+            if (cfg.WidgetShadow)
+            {
+                for (int i = 4; i >= 1; i--)
+                {
+                    var sr = new RectangleF(bounds.X - i, bounds.Y + i, bounds.Width + i * 2, bounds.Height);
+                    using (var br = new SolidBrush(Color.FromArgb(10, 0, 0, 0)))
+                        g.FillPath(br, RoundRect(sr, radius + i));
+                }
+            }
 
             // ---- фон ----
             if (cfg.BgEnabled && cfg.OpacityPercent > 0)
@@ -168,10 +199,12 @@ namespace NowPlaying
                 else ty = bounds.Y + (bounds.Height - size) / 2;
                 ty += (int)Math.Round(cfg.ThumbOffset * scale);
                 int navW = NavWidth(cfg, scale);
-                navInset = 0;                       // кнопки всегда у правого края
-                int tx = cfg.ThumbSide == "right"
-                    ? bounds.Right - pad - navW - size
-                    : bounds.X + pad;
+                navInset = 0;
+                int tx;
+                if (cfg.ThumbSide == "right")
+                    tx = bounds.Right - pad - (cfg.NavSide == "right" ? navW : 0) - size;
+                else
+                    tx = bounds.X + pad + (cfg.NavSide == "left" ? navW : 0);
                 var tr2 = new Rectangle(tx, ty, size, size);
                 if (cfg.ThumbShadow && size > 8)
                 {
@@ -182,10 +215,17 @@ namespace NowPlaying
                             g.FillPath(br, RoundRect(sr, (int)Math.Round(cfg.ThumbCorner * scale) + i));
                     }
                 }
+                int corner = cfg.ThumbCircle ? tr2.Width / 2 : (int)Math.Round(cfg.ThumbCorner * scale);
                 if (thumb != null)
-                    DrawThumb(g, thumb, tr2, (int)Math.Round(cfg.ThumbCorner * scale));
+                    DrawThumb(g, thumb, tr2, corner, cfg.ThumbCircle);
                 else
-                    DrawPlaceholder(g, tr2, (int)Math.Round(cfg.ThumbCorner * scale), scale);
+                    DrawPlaceholder(g, tr2, corner, scale);
+                if (cfg.ThumbBorder)
+                {
+                    using (var pen = new Pen(Color.FromArgb(70, 255, 255, 255), Math.Max(1f, scale)))
+                        if (cfg.ThumbCircle) g.DrawEllipse(pen, tr2);
+                        else g.DrawPath(pen, RoundRect(tr2, corner));
+                }
                 thumbSide = size + (int)Math.Round(cfg.TextGap * scale);
             }
 
@@ -212,7 +252,12 @@ namespace NowPlaying
                 textX = bounds.X + pad;
                 textW = bounds.Width - pad * 2;
             }
-            textW -= NavWidth(cfg, scale);
+            int navW2 = NavWidth(cfg, scale);
+            if (navW2 > 0)
+            {
+                if (cfg.NavSide == "left") { textX += navW2; }
+                textW -= navW2;
+            }
             if (textW < 8) return;
 
             Color titleCol = Config.ParseColor(cfg.TitleColor, Color.White);
@@ -236,6 +281,13 @@ namespace NowPlaying
             {
                 titleCol = Color.FromArgb(190, titleCol.R, titleCol.G, titleCol.B);
                 secondCol = Color.FromArgb(150, secondCol.R, secondCol.G, secondCol.B);
+            }
+            if (cfg.TextOpacity < 100)
+            {
+                titleCol = Color.FromArgb(titleCol.R, titleCol.G, titleCol.B,
+                    titleCol.A * cfg.TextOpacity / 100);
+                secondCol = Color.FromArgb(secondCol.R, secondCol.G, secondCol.B,
+                    secondCol.A * cfg.TextOpacity / 100);
             }
 
             using (var fT = SafeFont(cfg.FontName, cfg.TitleSize * scale, cfg.TitleBold ? FontStyle.Bold : FontStyle.Regular))
@@ -324,16 +376,22 @@ namespace NowPlaying
                 Color nc = Color.FromArgb(210, 210, 218);
                 bool lightBg2 = Luminance(EffectiveBackground(cfg, thumb, bounds)) > 0.55f;
                 if (lightBg2) nc = Color.FromArgb(70, 70, 82);
+                if (cfg.NavColorMode == "custom") nc = Config.ParseColor(cfg.NavColor, nc);
                 if (t != null && !t.IsPlaying && cfg.DimPaused) nc = Color.FromArgb(130, nc);
                 bool playing = t == null || t.IsPlaying;
 
+                var kinds = NavKinds(cfg);
                 var rects = NavRects(cfg, bounds, scale, navInset);
-                for (int i = 0; i < rects.Length; i++)
+                for (int i = 0; i < rects.Length && i < kinds.Length; i++)
                 {
                     var r = rects[i];
-                    using (var b = new SolidBrush(Color.FromArgb(26, 0, 0, 0)))
-                        g.FillPath(b, RoundRect(new RectangleF(r.X, r.Y, r.Width, r.Height), r.Width / 4));
-                    DrawNavGlyph(g, r, i, nc, playing);
+                    if (cfg.NavBackdrop)
+                    {
+                        int rad = (int)Math.Round(r.Width * cfg.NavCorner / 100.0);
+                        using (var b = new SolidBrush(Color.FromArgb(30, 0, 0, 0)))
+                            g.FillPath(b, RoundRect(new RectangleF(r.X, r.Y, r.Width, r.Height), rad));
+                    }
+                    DrawNavGlyph(g, r, kinds[i], nc, playing, cfg.NavWeight / 100f);
                 }
             }
 
@@ -373,6 +431,11 @@ namespace NowPlaying
 
         static void DrawNavGlyph(Graphics g, Rectangle r, int kind, Color c, bool playing)
         {
+            DrawNavGlyph(g, r, kind, c, playing, 1f);
+        }
+
+        static void DrawNavGlyph(Graphics g, Rectangle r, int kind, Color c, bool playing, float weight)
+        {
             float cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f;
             float u = r.Width / 3f;
 
@@ -381,7 +444,7 @@ namespace NowPlaying
                 if (playing)
                 {
                     // пауза — две вертикальные черты
-                    float bw = Math.Max(1.2f, u * 0.34f);
+                    float bw = Math.Max(1.2f, u * 0.34f * weight);
                     float bh = u * 1.15f;
                     using (var b = new SolidBrush(c))
                     {
@@ -409,7 +472,7 @@ namespace NowPlaying
                     new PointF(cx - dir * u * 0.52f, cy - u * 0.62f),
                     new PointF(cx - dir * u * 0.52f, cy + u * 0.62f),
                     new PointF(cx + dir * u * 0.46f, cy) });
-                float bw = Math.Max(1.2f, u * 0.20f);
+                float bw = Math.Max(1.2f, u * 0.20f * weight);
                 g.FillRectangle(b, cx + dir * u * 0.52f - (next ? 0 : bw), cy - u * 0.62f, bw, u * 1.24f);
             }
         }
@@ -448,8 +511,24 @@ namespace NowPlaying
             }
         }
 
-        static void DrawThumb(Graphics g, Image thumb, Rectangle dst, int radius)
+        static void DrawThumb(Graphics g, Image thumb, Rectangle dst, int radius, bool circle)
         {
+            if (circle)
+            {
+                using (var path = new GraphicsPath())
+                {
+                    path.AddEllipse(dst);
+                    var st0 = g.Save();
+                    g.SetClip(path, CombineMode.Intersect);
+                    float sc = Math.Max((float)dst.Width / thumb.Width, (float)dst.Height / thumb.Height);
+                    int dw0 = (int)Math.Round(thumb.Width * sc);
+                    int dh0 = (int)Math.Round(thumb.Height * sc);
+                    g.DrawImage(thumb, new Rectangle(dst.X + (dst.Width - dw0) / 2,
+                        dst.Y + (dst.Height - dh0) / 2, dw0, dh0));
+                    g.Restore(st0);
+                }
+                return;
+            }
             if (radius <= 0)
             {
                 g.DrawImage(thumb, dst);
