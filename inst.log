@@ -81,7 +81,7 @@ Creating setup files
    Updating manifest (Setup.exe)
 
 
-Successful compile (1,156 sec). Resulting Setup program filename is:
-C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist\MusicBarWin11-Setup-1.4.1.exe
+Successful compile (1,110 sec). Resulting Setup program filename is:
+C:\Users\user\AppData\Roaming\open-cowork\default_working_dir\musicbarwin11\dist\MusicBarWin11-Setup-1.4.2.exe
 
 Installer -> dist\

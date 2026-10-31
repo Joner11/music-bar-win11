@@ -12,6 +12,6 @@ taskkill /F /IM MusicBarWin11.exe >nul 2>&1
   /r:"%WINMD%\Windows.Foundation.winmd" ^
   /r:"%WINMD%\Windows.Storage.winmd" ^
   /r:"%WINMD%\Windows.Media.winmd" ^
-  Config.cs MediaApi.cs Renderer.cs Widget.cs Ui.cs Ui2.cs SettingsForm.cs Version.cs
+  Config.cs MediaApi.cs Json.cs CloudMus.cs Renderer.cs Widget.cs Ui.cs Ui2.cs SettingsForm.cs Version.cs
 if errorlevel 1 (echo BUILD FAILED & exit /b 1)
 echo BUILD OK

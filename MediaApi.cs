@@ -272,6 +272,13 @@ namespace NowPlaying
                             try { t.Album = ((string)pt.GetProperty("AlbumTitle").GetValue(props, null) ?? "").Trim(); } catch { }
                         }
 
+                        if (!t.HasText)
+                        {
+                            // Некоторые плееры (CloudMus) пишут трек в свои файлы,
+                            // но в SMTC метаданные не отдают вообще.
+                            CloudMus.TryFill(t);
+                        }
+
                         if (t.HasText)
                         {
                             CachePut(t);
