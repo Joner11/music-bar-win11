@@ -368,21 +368,38 @@ namespace NowPlaying
 
         TrackInfo Pick(List<TrackInfo> list)
         {
+            // Приоритет: играющий трек С МЕТАДАННЫМИ → играющий без них →
+            // пауза с метаданными → последняя известная сессия.
+            // Пустая сессия (CloudMus умеет показывать «Playing» без Title/Artist)
+            // не должна перекрывать нормальный трек из другого плеера.
             TrackInfo firstAny = null, playing = null, paused = null, lastSession = null;
+            TrackInfo playingStale = null, playingEmpty = null, pausedEmpty = null;
             foreach (var t in list)
             {
                 if (t == null) continue;
-                bool hasText = t.Title.Length > 0 || t.Artist.Length > 0;
-                if (!hasText && !Cfg.AlwaysVisible) continue;
                 if (t.Session == lastGoodSession) lastSession = t;
-                if (firstAny == null) firstAny = t;
-                if (t.IsPlaying && playing == null) playing = t;
-                if (t.Status == 5 && paused == null) paused = t;
+
+                if (t.IsPlaying)
+                {
+                    if (t.HasText && !t.Stale) { if (playing == null) playing = t; }
+                    else if (t.HasText) { if (playingStale == null) playingStale = t; }
+                    else { if (playingEmpty == null) playingEmpty = t; }
+                }
+                else if (t.Status == 5)
+                {
+                    if (t.HasText) { if (paused == null) paused = t; }
+                    else if (pausedEmpty == null) pausedEmpty = t;
+                }
+
+                if (t.HasText && firstAny == null) firstAny = t;
             }
 
             TrackInfo result = null;
-            if (playing != null) result = playing;
+            if (playing != null) result = playing;                 // играет + есть метаданные
+            else if (playingStale != null) result = playingStale;   // играет + последние известные
             else if (Cfg.ShowPaused && paused != null) result = paused;
+            else if (playingEmpty != null) result = playingEmpty;   // играет, но совсем пусто
+            else if (Cfg.ShowPaused && pausedEmpty != null) result = pausedEmpty;
             else if (!Cfg.HideWhenIdle) result = firstAny;
 
             if (result != null)

@@ -243,7 +243,13 @@ namespace NowPlaying
             }
 
             // ---- текст ----
-            string title = t == null ? "" : (t.Title.Length > 0 ? t.Title : "Без названия");
+            string title = "";
+            if (t != null)
+            {
+                // Бывает, что плеер отдал только исполнителя — не пишем поверх
+                // «Без названия», лучше показать то, что есть.
+                title = t.Title.Length > 0 ? t.Title : (t.Artist.Length > 0 ? t.Artist : "Без названия");
+            }
             string second = t == null ? "" : t.SecondText(cfg);
             if (cfg.TextCase == "upper") { title = title.ToUpperInvariant(); second = second.ToUpperInvariant(); }
             else if (cfg.TextCase == "lower") { title = title.ToLowerInvariant(); second = second.ToLowerInvariant(); }

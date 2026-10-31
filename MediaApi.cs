@@ -21,6 +21,9 @@ namespace NowPlaying
         public double DurationSec;
         public DateTime TimelineAt = DateTime.UtcNow;
 
+        /// <summary>Данные взяты из кэша: плеер сейчас отдаёт пустые метаданные.</summary>
+        public bool Stale;
+
         /// <summary>Позиция воспроизведения с учётом времени, прошедшего с последнего опроса.</summary>
         public double CurrentPosition
         {
@@ -38,6 +41,9 @@ namespace NowPlaying
         public string Key { get { return App + "\u0001" + Title + "\u0001" + Artist + "\u0001" + Album; } }
         public bool IsPlaying { get { return Status == 4; } }
 
+        /// <summary>В сессии есть хоть какие-то метаданные (не пустая заглушка).</summary>
+        public bool HasText { get { return Title.Length > 0 || Artist.Length > 0; } }
+
         public string AppName
         {
             get
@@ -53,6 +59,14 @@ namespace NowPlaying
                 int underscore = a.IndexOf('_');
                 if (underscore > 0 && bang > 0) a = a.Substring(0, underscore);
                 if (a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) a = a.Substring(0, a.Length - 4);
+                // "CloudMus.CloudMus" — некоторые приложения регистрируют AUMID из двух
+                // одинаковых половин, в подписи это выглядит мусором.
+                int dot = a.IndexOf('.');
+                if (dot > 0 && dot < a.Length - 1)
+                {
+                    string left = a.Substring(0, dot), right = a.Substring(dot + 1);
+                    if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase)) a = left;
+                }
                 return a.Trim();
             }
         }
@@ -162,6 +176,47 @@ namespace NowPlaying
 
         public static void InvalidateManager() { _mgr = null; }
 
+        // Последние непустые метаданные по каждому плееру. Некоторые приложения
+        // (например CloudMus) периодически отдают пустые Title/Artist, хотя музыка
+        // играет — тогда показываем последнее известное, а не «Без названия».
+        class CachedProps
+        {
+            public string Title = "", Artist = "", Album = "";
+            public DateTime At = DateTime.UtcNow;
+        }
+
+        static readonly Dictionary<string, CachedProps> _cache = new Dictionary<string, CachedProps>();
+        const double CacheTtlSec = 300;
+
+        static CachedProps CacheGet(string app)
+        {
+            CachedProps c;
+            if (app == null) return null;
+            if (!_cache.TryGetValue(app, out c)) return null;
+            if ((DateTime.UtcNow - c.At).TotalSeconds > CacheTtlSec) { _cache.Remove(app); return null; }
+            return c;
+        }
+
+        static void CachePut(TrackInfo t)
+        {
+            if (t == null || t.App == null || !t.HasText) return;
+            var c = new CachedProps();
+            c.Title = t.Title; c.Artist = t.Artist; c.Album = t.Album;
+            _cache[t.App] = c;
+        }
+
+        /// <summary>Читает метаданные одной сессии. Возвращает null при ошибке/таймауте.</summary>
+        static object FetchProps(object session, int timeoutMs)
+        {
+            try
+            {
+                var st = session.GetType();
+                var op = st.GetMethod("TryGetMediaPropertiesAsync").Invoke(session, null);
+                return Await(op, _propsT, timeoutMs);
+            }
+            catch { return null; }
+        }
+
         /// <summary>Читает список сессий SMTC. Возвращает null при фатальной ошибке.</summary>
         public static List<TrackInfo> Read()
         {
@@ -174,6 +229,9 @@ namespace NowPlaying
                     var mgr = Manager();
                     var sessions = (IEnumerable)_mgrT.GetMethod("GetSessions").Invoke(mgr, null);
                     if (sessions == null) return list;
+                    // Общий бюджет на опрос: один зависший плеер не должен
+                    // растягивать Read() на десятки секунд.
+                    var deadline = DateTime.UtcNow.AddMilliseconds(2200);
                     int guard = 0;
                     foreach (object s in sessions)
                     {
@@ -204,19 +262,31 @@ namespace NowPlaying
                         catch { }
 
                         object props = null;
-                        try
-                        {
-                            var op = st.GetMethod("TryGetMediaPropertiesAsync").Invoke(s, null);
-                            props = Await(op, _propsT, 2500);
-                        }
-                        catch { }
-
+                        int leftMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                        if (leftMs > 150) props = FetchProps(s, Math.Min(1200, leftMs));
                         if (props != null)
                         {
                             var pt = props.GetType();
                             try { t.Title = ((string)pt.GetProperty("Title").GetValue(props, null) ?? "").Trim(); } catch { }
                             try { t.Artist = ((string)pt.GetProperty("Artist").GetValue(props, null) ?? "").Trim(); } catch { }
                             try { t.Album = ((string)pt.GetProperty("AlbumTitle").GetValue(props, null) ?? "").Trim(); } catch { }
+                        }
+
+                        if (t.HasText)
+                        {
+                            CachePut(t);
+                        }
+                        else
+                        {
+                            // Плеер молчит по метаданным (CloudMus и подобные умеют так
+                            // делать). Если раньше он же отдавал нормальный трек —
+                            // показываем его, иначе виджет превращается в «Без названия».
+                            var c = CacheGet(t.App);
+                            if (c != null)
+                            {
+                                t.Title = c.Title; t.Artist = c.Artist; t.Album = c.Album;
+                                t.Stale = true;
+                            }
                         }
                         list.Add(t);
                     }
